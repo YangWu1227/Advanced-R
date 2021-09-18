@@ -1,0 +1,345 @@
+---
+title: "Data frames and tibbles"
+author: "Ken Wu"
+date: "6/18/2021"
+output:
+  bookdown::html_document2:
+    toc: true
+    toc_float: true
+    number_sections: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(collapse = TRUE)
+knitr::opts_chunk$set(comment = NA)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(fig.width = 5, fig.height = 3, fig.align = "center")
+library(tidyverse)
+library(datasets)
+```
+
+## Data frame
+
+Data frames and tibbles are S3 vectors built on top of lists. A data frame is a named list of vectors with three attributes: (column) names, row.names, and its class, "data.frame." 
+
+```{r}
+# Data frames are built on lists
+df1 <- data.frame(x = 1:3, y = letters[1:3])
+typeof(df1)
+# Attributes
+attributes(df1)
+# Column names (variables or fields)
+names(df1)
+colnames(df1)
+# Row names (observations or records)
+row.names(df1)
+```
+
+The following sentences describe data frames in R:
+
+* Compared to regular lists, data frames have an additional constraint--- that the length of each of its vectors must be the same.
+
+* A data frame has row.names() and colnames(). The names of a data frame are the column names.
+
+* A data frame has nrow() rows and ncol() columns. The length() of a data frame gives the number of columns.
+
+---
+
+## Tibbles
+
+```{r}
+# Tibbles have a longer class vector, and includes "tbl_df"
+# It is also built on lists
+df2 <- tibble(x = 1:3, y = letters[1:3])
+typeof(df2)
+# Attributes
+attributes(df2)
+```
+
+Tibbles and data frames are created by supplying name-vector pairs to data.frame() or tibble(), e.g., x = (...) or y = (...).
+
+```{r}
+rm(list = ls())
+```
+
+---
+
+### Some key differences between tibbles and data frames
+
+1. Unlike data frames, tibbles never coerce their input. However, the stringsAsFactors argument in data.frame() has been modified. The ‘factory-fresh’ default has been TRUE previously but has been changed to FALSE for R 4.0.0. Now both objects are lazy.
+
+```{r}
+# Create a data frame
+df1 <- data.frame(
+  x = 1:3,
+  y = c("a", "b", "c"),
+  stringsAsFactors = TRUE
+)
+# Structure of data frame
+str(df1)
+# Create a tibble
+df2 <- tibble(
+  x = 1:3,
+  y = c("a", "b", "c")
+)
+# Structure of tibble
+str(df2)
+```
+
+
+2. Data frames automatically transform non-syntactic names (unless check.names = FALSE), tibbles do not. 
+
+```{r}
+# Data frame
+names(data.frame("1" = 1, check.names = TRUE))
+# Tibble
+names(tibble("1" = 1))
+```
+
+3. Data frame automatically recycle columns *are an integer multiple of the longest column*. Note that Tibbles will only recycle vectors of length one or else it would return an error. It complains more here to allow users to confront potential problems early.
+
+```{r}
+# Data frame recycles shorter columns that are an integer multiple
+# Or else it would return an error
+data.frame(
+  x = 1:4,
+  y = 1:2
+)
+# Tibble recycles vectors of length 1
+tibble(
+  x = 1:4,
+  y = 7
+)
+```
+
+4. Tibbles allow you to refer to variables created during construction. Data frame does not allow for it:
+
+```{r}
+# Tibble
+tibble(
+  x = 1:4,
+  y = x * 3 + 4
+)
+```
+
+---
+
+### Row names
+
+```{r}
+# Row names
+df3 <- data.frame(
+  age = c(35, 27, 18),
+  hair = c("blond", "brown", "black"),
+  row.names = c("Bob", "Susan", "Sam")
+)
+df3
+# Retrieve row names
+rownames(df3)
+# Set row names
+rownames(df3) <- c("Sammie", "Ken", "Adia")
+df3
+```
+
+Row names have undesirable properties. The example below subsets the data frame but duplicate rows create new row names. This makes matching rows from before and after difficult. 
+
+```{r}
+df3[c(2, 2, 1), ]
+```
+
+Tibbles do not support row names. Tibble provides tools to easily convert row names into a *regular column*. 
+
+```{r}
+# First way to convert
+rownames_to_column(df3, var = "Name of obs")
+# Second way
+as_tibble(x = df3, rownames = "Person Names")
+```
+
+---
+
+### Printing
+
+* Tibbles only show the first 10 rows and all the columns that fit on screen; additional columns are shown at the bottom.
+
+```{r}
+# Data frame
+# as.data.frame(dplyr::starwars)
+# Tibble
+as_tibble(dplyr::starwars)
+```
+* Each column in a tibble's print is labeled with its type, abbreviated to three or four letters.
+
+* Wide columns are truncated to avoid having a single long string.
+
+* When used in console environments, color is used to highlight important information and de-emphasize supplemental details.
+
+---
+
+## Testing and coercing
+
+```{r}
+# Check if dataframe
+is.data.frame(df1)
+is.data.frame(df2)
+# Check if tibble
+is.tibble(df1)
+is.tibble(df2)
+# Coercing
+as_tibble(df1)
+as.data.frame(df2)
+```
+
+```{r}
+rm(list = ls())
+```
+
+---
+
+## List columns
+
+Since a data frame is a list of vectors, it's possible to have a column that is a list. Two ways to do so in a data frame: 1. Add list-column after creation of data frame or 2. wrap the list in I(), which is short for identity and is often used to indicate that an input should be left as is and not automatically transformed.
+
+```{r}
+# Create data frame
+df <- data.frame(x = 1:3)
+# Add list-column
+df$y <- list(
+  1:2,
+  letters[3:20], seq.int(from = 1, to = 29, by = 0.8)
+)
+as_tibble(df)
+# Create data frame with list-column directly
+as_tibble(data.frame(
+  x = 1:3,
+  y = I(list(
+    1:2,
+    letters[3:20], seq.int(from = 1, to = 29, by = 0.8)
+  ))
+))
+```
+
+List columns are easier to use with tibbles:
+
+```{r}
+# Create a tibble with list column
+tibble(
+  x = 1:3, 
+  y = list(1:2, sample(x = letters[1:24], size = 4), 1:4)
+)
+```
+
+---
+
+## Exercises
+
+### Exercise 1
+
+Create a 0-row, 0-column, or an empty data frame directly:
+
+```{r}
+# Zero rows
+data.frame(a = integer(), b = logical())
+# Zero columns
+str(data.frame()[1:3, ])
+dim(data.frame()[1:3, ])
+data.frame(row.names = 1:3)  
+```
+
+Create similar data frames via subsetting the respective dimension with either 0, NULL, FALSE or a valid 0-length atomic vector (logical(0), character(0), integer(0), double(0)). Negative integer sequences would also work.:
+
+```{r}
+# Load data
+data("iris")
+# Zero row using 0
+iris[0, ]
+# Zero row using NULL
+iris[NULL, ]
+# Zero row using FALSE
+iris[logical(0), ]
+# Zero columns using 0
+mtcars[ , 0]  
+mtcars[0]
+# Empty data frame
+mtcars[0, 0]
+data.frame()
+```
+
+---
+
+### Exercise 2
+
+Matrices can have duplicated row names, so this does not cause problems. Data frames, however, require unique rownames and you get different results depending on how you attempt to set them. If you set them directly or via row.names(), you get an error. If you use subsetting, [ automatically deduplicates:
+
+```{r}
+row.names(df) <- c("x", "y", "z")
+df[c(1, 1, 1), , drop = FALSE]
+```
+
+---
+
+### Exercise 3
+
+```{r}
+# data frame
+df
+# Transpose data frame
+t(df)
+# Transpose data frame again
+t(t(df))
+# Returns a data frame?
+is.data.frame(t(t(df)))
+# What does transposing a data frame return?
+class(t(df))
+```
+
+---
+
+The type of the result of as.matrix depends on the types of the input columns (see ?as.matrix). On the other hand, data.matrix will always return a numeric matrix (see ?data.matrix()).
+
+```{r}
+# Create data frame
+df_coltypes <- data.frame(
+  a = c("a", "b"),
+  b = c(TRUE, FALSE),
+  c = c(1L, 0L),
+  d = c(1.5, 2),
+  e = factor(c("f1", "f2"))
+)
+# Use as.matrix()
+as.matrix(df_coltypes)
+# Use data.matrix()
+data.matrix(df_coltypes)
+```
+
+---
+
+## NULL
+
+The NULL data structure always has zero length and cannot have any attributes:
+
+```{r}
+typeof(NULL)
+length(NULL)
+```
+
+Test for NULLs using is.null():
+
+```{r}
+is.null(NULL)
+```
+
+SQL's Relational NULL is equivalent to R's NA.
+
+```{r}
+rm(list = ls())
+```
+
+
+
+
+
+
+

@@ -1,0 +1,247 @@
+---
+title: "dot-dot-dot & Exiting a function"
+author: "Ken Wu"
+date: "7/17/2021"
+output:
+  bookdown::html_document2:
+    toc: true
+    toc_float: true
+    number_sections: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(collapse = TRUE)
+knitr::opts_chunk$set(comment = NA)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(fig.width = 6, fig.height = 4, fig.align = "center")
+library(tidyverse)
+options(digits = 7)
+```
+
+## Dot-dot-dot
+
+Functions can have a special argument ... (pronounced dot-dot-dot). With it, a function can take any number of additional arguments. In other programming languages, this type of argument is often called **varargs** (short for variable arguments), and a function that uses it is said to be **variadic**.
+
+## Exercises
+
+### Exercise 1
+
+Explain the following results:
+
+```{r}
+# Pass several numbers to sum, and it also adds the elements
+sum(1, 2, 3)
+# The trim argument must a fraction (0 to 0.5)  of obs to be trimmed from each end of x before the mean is computed
+# The na.rm argument should be a logical vector of length-1, and any number > 0 is coerced to TRUE
+mean(x = 1, trim = 2, na.rm = 3)
+# If there are missing values, the sum is unknown unless NA's are excluded
+sum(1, 2, 3, na.omit = FALSE)
+sum(1, 2, 3, na.omit = TRUE)
+mean(1, 2, 3, na.omit = TRUE)
+```
+
+* For the ... argument sum() expects numeric, complex, or logical vector input (see ?sum). Unfortunately, when ... is used, misspelled arguments (!) like na.omit won’t raise an error (in case of no further input checks). So instead, na.omit is treated as a logical and becomes part of the ... argument. It will be coerced to 1 and be part of the sum. All other arguments are left unchanged. Therefore sum(1, 2, 3) returns 6 and sum(1, 2, 3, na.omit = TRUE) returns 7.
+
+* The function `na.omit()` is not one of mean()’s named arguments (x; and no candidate for partial matching), na.omit again becomes part of the ... argument. However, in contrast to sum() the elements of ... are not “part” of the mean. The other supplied arguments are matched by their order, i.e. x = 1, trim = 2 and na.rm = 3. As x is of length 1 and not NA, the settings of trim and na.rm do not affect the calculation of the mean. Both calls (mean(1, 2, 3) and mean(1, 2, 3, na.omit = TRUE)) return 1.
+
+---
+
+### Exercise 2
+
+Explain how to find the documentation for the named arguments in the following function call:
+
+```{r}
+plot(1:10, col = "red", pch = 20, xlab = "x", col.lab = "blue")
+```
+
+```{r}
+# Arguments of plot()
+args(plot)
+```
+
+The ... other arguments' documentations can be found using `par()`.
+
+---
+
+## Exiting a function
+
+### Implicit versus explicit returns
+
+Two ways a function can return a value:
+
+* Implicitly where the last evaluated expression is the return value:
+
+```{r}
+# Exit function
+exit_1 <- function(x) {
+  if (x < 10) {
+    0
+  } else {
+    10
+  }
+}
+# Last evaluated expression is the return value
+exit_1(x = 23)
+exit_1(x = 3)
+```
+
+* Explicitly by calling `return()`:
+
+```{r}
+# Exit function
+exit_2 <- function(x) {
+  if (x < 10) {
+    return(0)
+  } else {
+    return(10)
+  }
+}
+exit_2(x = 23)
+```
+
+If value is missing, NULL is returned. If it is a single expression, the value of the evaluated expression is returned. (The expression is evaluated as soon as return is called, in the evaluation frame of the function and before any on.exit expression is evaluated.)
+
+If the end of a function is reached without calling return, the value of the last evaluated expression is returned.
+
+---
+
+### Invisible values
+
+Most functions return visibly, printing the result. To prevent automatic printing, apply the `invisible()` function to the last value evaluated in the function:
+
+```{r}
+# Invisible values
+exit_1 <- function(x) {
+  if (x < 10) {
+    invisible(0)
+  } else {
+    invisible(7)
+  }
+}
+```
+
+To verify that this values does indeed exit, explicitly print it or wrap it in parentheses:
+
+```{r}
+print(exit_1(x = 23))
+(exit_1(x = 3))
+```
+
+Alternatively, use `withVisible()`. This primitive function evaluates an expression, returning it in a two element list containing its value and a flag showing whether it would automatically print.
+
+```{r}
+withVisible(exit_1(x = 23))
+```
+
+The most common function that returns invisibly is <-:
+
+```{r}
+# Assignment function
+`<-`
+# Test
+withVisible(a <- 4)
+```
+
+---
+
+## Errors
+
+Use `base::stop()`, `base::stop()`, `base::warning()`, `base::message()`, or `rlang::abort()` to throw an error if a function cannot complete its assigned task:
+
+```{r, eval=FALSE}
+j05 <- function() {
+  stop("I'm an error")
+  return(10)
+}
+```
+
+---
+
+## Exit handlers
+
+Function exit code: `on.exit()` records the expression given as its argument as needing to be executed when the current function exits (either naturally or as the result of an error). This is useful for resetting graphical parameters or performing other cleanup actions.
+
+* expr = an expression to be executed on exit
+
+* If add = TRUE, each call to on.exit will **not** overwrite the previous exit handler.
+
+* If add = TRUE and after is FALSE, then expressions will be added on top of the expressions that were already registered.
+
+```{r, eval=FALSE}
+with_dir <- function(dir, code) {
+  # Save directory
+  old <- setwd(dir)
+  # Set directory on exit
+  on.exit(expr = setwd(old), add = TRUE)
+
+  force(code)
+}
+```
+
+---
+
+## Exercises
+
+### Exercise 1
+
+What does load() return? Why don’t you normally see these values?
+
+The function `load()` loads objects saved to disk in .Rdata files by `save()`, which writes an external representation of R objects to the specified file. . When run successfully, `load()` **invisibly** returns a character vector containing the names of the newly loaded objects. To print these names to the console, one can set the argument verbose to TRUE or surround the call in parentheses to trigger R’s auto-printing mechanism.
+
+---
+
+### Exercise 2
+
+What does write.table() return? What would be more useful?
+
+The function `write.table()` prints its required argument x (after converting it to a data frame if it is not one nor a matrix) to a file. The important arguments are"
+
+* x = the object to be written, preferably a matrix or data frame. If not, it is attempted to coerce x to a data frame.
+
+* file = either a character string naming a file or a connection open for writing. "" indicates output to the console.
+
+---
+
+### Exercise 3
+
+How does the chdir parameter of source() compare to with_dir()? Why might you prefer one to the other?
+
+* The `in_fir(dir, expr)` function from the xfun package changes the working directory, evaluates the expression, and restores the working directory. The director can be chosen and so this is flexible.
+
+
+* The `source(file, chdir)` function causes R to accept its input from the named file. The chdir argument accepts logical value; if TRUE and file is a "pathname", the R working directory is temporarily changed to the directory containing file for evaluating. Since you can only provide TRUE or FALSE, you are also less flexible in choosing the working directory for the code execution.
+
+---
+
+### Exercise 4
+
+Write a function that opens a graphics device, runs the supplied code, and closes the graphics device (always, regardless of whether or not the plotting code works).
+
+**\underline{Graphics Devices}**
+
+Graphics in R are plotted on a graphics device. You can manually specify a graphics device or let R use the default device. In an interactive R environment, the default is to use the device that plots graphics on the screen. On Mac OS X, the quartz device is used. 
+
+* The function `dev.cur()` returns a length-one named integer vector giving the number and name of the active device, or 1, the null device, if none is active. 
+
+* The function "x(file)," where "x" is a place holder for any listed graphical device (e.g. pdf, bitmap, png, jpeg, etc.), opens the file `file` and the "x" commands needed to plot any graphics requested are written to that file.  
+
+```{r}
+# Function
+graph <- function(graphic_device, code) {
+
+  # Open graphic device
+  switch(graphic_device,
+    pdf = pdf("test.pdf"),
+    png = png("test.png"),
+    jpeg = jpeg("test.jpeg"),
+    stop("Invalid `graphical_device` input")
+  )
+  # Exit handler
+  on.exit(expr = dev.off(), add = TRUE)
+
+  # Run the supplied code
+  code
+}
+```

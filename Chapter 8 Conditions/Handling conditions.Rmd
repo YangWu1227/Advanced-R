@@ -1,0 +1,567 @@
+---
+title: "Handling conditions"
+author: "Yang Wu"
+date: "9/17/2021"
+output:
+  bookdown::html_document2:
+    toc: true
+    toc_float: true
+    number_sections: false
+---
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(comment = NA)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(fig.width = 6, fig.height = 4, fig.align = "center")
+library(rlang)
+library(tidyverse)
+options(digits = 4)
+```
+
+# Condition objects
+
+The condition object can be captured using `rlang::catch_cnd()`:
+
+```{r}
+cnd <- rlang::catch_cnd(expr = stop(message = "An Error Please Stop"), classes = "condition")
+str(cnd)
+```
+
+Built-in condition objects are *lists* with two elements:
+
+* `message`, which is a length-1 character vector containing the text to display to a user. Use `base::conditionMessage()` to extract the message:
+
+```{r}
+base::conditionMessage(c = cnd)
+```
+
+*  `call`, which is the call which triggered the condition. We usually set `call. = FALSE` and so this will often be NULL. Use `base::conditionCall()` to extract it:
+
+```{r}
+new_cnd <- rlang::catch_cnd(expr = sum("e"), classes = "condition")
+base::conditionCall(c = new_cnd)
+```
+
+Built-in conditions objects are usually those triggered when a built-in function throws an error. Condition objects have a `class` attribute, which makes them `S3` objects. The `class` attribute is a character vector, and it determines which handlers will match the condition:
+
+```{r}
+class(new_cnd)
+```
+
+---
+
+## Exiting handlers
+
+The function `tryCatch(expr, ..., finally)` registers exiting handlers, which allows use to override the default error behavior.
+
+```{r}
+# Function
+f1 <- function(x) {
+  base::tryCatch(
+    # If the input "x" is invalid, a error condition object is created
+    # Then, the control is passed to the handler--- the function below
+    # The handler function runs and the the character vector "Error" is returned
+    error = function(error) {
+      "Error"
+    },
+    # If no error condition is signaled, run the code normally
+    log(x, base = exp(1))
+  )
+}
+# Test
+# No condition
+f1(3)
+# Condition signaled
+f1("3")
+```
+
+In addition, if the class of the condition object does not match the handler's name--- `error`, `message`, `warning`--- then the code also executes normally:
+
+```{r}
+# Matched condition
+base::tryCatch(
+  error = function(error) {
+    "This is an error"
+  },
+  {
+    base::stop("Error")
+    10 + 7
+  }
+)
+# Not matched
+base::tryCatch(
+  error = function(error) {
+    "This is an error"
+  },
+  {
+    base::message("Error")
+    7 * sample(x = 1:20, size = 5, replace = TRUE)
+  }
+)
+```
+
+The nuance here is that after the condition is signaled, control passes to the the context where `tryCatch()` was called. In other words, the code that throws the error and creates the error condition object is ever run:
+
+```{r}
+tryCatch(
+  message = function(message) {
+    "Message"
+  },
+  {
+    base::message("condition signaled")
+    base::stop("This code is never run", call. = FALSE)
+  }
+)
+```
+
+The protected code `base::stop("This code is never run", call. = FALSE)` is run in the environment of `tryCatch()`, but the handler code `"Message"` is not since the handler `message` is a function itself.
+
+```{r}
+tryCatch(
+  error = function(cnd) {
+    base::paste0("~~", base::conditionMessage(c = cnd), "~~")
+  },
+  base::stop("This is an error", call. = FALSE)
+)
+```
+
+In the code above, `base::stop("This is an error", call. = FALSE)` creates a condition object which is passed to the handler as its single argument, and the control is never return to the code. This is different from `base::withCallingHandler()`, which returns the control to where the condition was signaled and `base::stop("This is an error", call. = FALSE)` is run:
+
+```{r, eval=FALSE}
+withCallingHandlers(
+  error = function(cnd) {
+    base::paste0("~~", base::conditionMessage(c = cnd), "~~")
+  },
+  base::stop("This is an error", call. = FALSE)
+)
+# - Error: This is an error
+```
+
+The function `tryCatch()` has one other argument `finally`, which is an expression to be evaluated before returning or exiting. This block of code runs regardless of whether the initial expression succeeds or fails:
+
+```{r}
+tryCatch(
+  error = function(cnd) {
+    base::paste0("~~", base::conditionMessage(c = cnd), "~~")
+  },
+  base::stop("This is an error", call. = FALSE),
+  finally = {
+    print("I run regardless")
+  }
+)
+```
+
+---
+
+# Calling handlers
+
+Exiting and calling handlers use "handlers" in different ways:
+
+* Exiting handlers cause code to exit once the condition object has been created and passed to the handler function.
+
+* Calling handlers returns control to the context of where the condition object was created and the code continues normally. This makes calling handlers work well with non-error conditions.
+
+The example below demonstrates the difference:
+
+```{r}
+# Exiting handler never returns control to the context where the condition is signaled
+tryCatch(
+  message = function(message) cat("Caught a message \n"),
+  {
+    base::message("one")
+    base::message("two")
+  }
+)
+# Calling handlers will return control to the context where the condition is signaled
+withCallingHandlers(
+  message = function(message) cat("Caught a message \n"),
+  {
+    base::message("one")
+    base::message("two")
+  }
+)
+```
+
+The return value of a calling handler is ignored since the code continues to run after the handler completes. One unique side-effect of calling handlers is that we can **muffle** the condition signal. By default, a condition will propagate to the parent handlers at the top level, all the way up to the default handler: 
+
+```{r}
+# Propagation of condition
+withCallingHandlers(
+  # Default calling handler
+  message = function(message) {
+    cat("level 2\n")
+  },
+  withCallingHandlers(
+    # Calling handler within the default handler
+    message = function(message) {
+      cat("level 1\n")
+    },
+    # This code creates the condition object to be passed on to level 1 calling handler
+    # Then, after level 1 calling handler completes, the code is run and prints "Hello"
+    # This creates another condition object to be passed on to level 2 default calling handler
+    # Finally, the default calling handler completes and "Hello" is printed normally
+    message("Hello")
+  )
+)
+```
+
+Another example of such propagation:
+
+```{r}
+# Propagation of condition
+tryCatch(
+  # Default calling handler
+  message = function(message) {
+    cat("level 2\n")
+  },
+  withCallingHandlers(
+    # Calling handler within the default handler
+    message = function(message) {
+      cat("level 1\n")
+    },
+    # This code creates the condition object to be passed on to level 1 calling handler
+    # Then, after level 1 calling handler completes, the code is run and prints "Hello"
+    # This creates another condition object to be passed on to level 2 default calling handler
+    # However, this time "Hello" is not printed since tryCatch() never returns control
+    message("Hello")
+  )
+)
+```
+
+For the first example, we can muffle the default calling handler at level 2. In other words, the "Hello" message will not be printed:
+
+```{r}
+# Propagation of condition
+withCallingHandlers(
+  # Default calling handler
+  message = function(message) {
+    cat("level 2\n")
+    # This prevents "message("Hello")" from creating a new condition object here
+    rlang::cnd_muffle(message)
+  },
+  withCallingHandlers(
+    # Calling handler within the default handler
+    message = function(message) {
+      cat("level 1\n")
+    },
+    # This code creates the condition object to be passed on to level 1 calling handler
+    # Then, after level 1 calling handler completes, the code is run and prints "Hello"
+    # This hello does not create a new condition object to be passed on to level 2 default
+    # The default calling handler is muffled and the signal is not captured
+    message("Hello")
+  )
+)
+```
+
+For the second example, we muffle the calling handler within the default calling handler:
+
+```{r}
+# Propagation of condition
+withCallingHandlers(
+  # Default calling handler
+  message = function(message) {
+    cat("level 2\n")
+  },
+  withCallingHandlers(
+    # Calling handler within the default handler
+    message = function(message) {
+      cat("level 1\n")
+      # This ensures control is not returned to where condition was signaled
+      # The message "Hello" will not be printed
+      # The default calling handler will not be triggered
+      rlang::cnd_muffle(message)
+    },
+    # This code creates the condition object to be passed on to level 1 calling handler
+    # However, after level 1 calling handler completes, the code is NOT run since its muffled
+    message("Hello")
+  )
+)
+```
+
+---
+
+# Call stacks
+
+```{r}
+# Sequence of function calls
+f <- function() g()
+g <- function() h()
+h <- function() message("!")
+# Calling f() returns the message
+f()
+```
+
+Calling handlers are called in the context of the call that signaled the condition:
+
+```{r}
+withCallingHandlers(
+  f(),
+  message = function(cnd) {
+    # Call stack tree
+    lobstr::cst()
+    # Do not create a conditional object
+    cnd_muffle(cnd)
+  }
+)
+```
+
+Examine the tree above, the `function (cnd) lobstr::cst()` is linked to the context in which `f()` is called via the dashed line. On the other hand, exiting handlers are called in the context of the call to `tryCatch()`:
+
+```{r}
+tryCatch(
+  f(),
+  message = function(cnd) {
+    lobstr::cst()
+  }
+)
+```
+
+```{r}
+rlang::env_unbind(
+  env = global_env(),
+  nms = names(x = global_env())
+)
+```
+
+
+---
+
+# Exercises
+
+## Exercise 1
+
+What extra information does the condition generated by `abort()` contain compared to the condition generated by stop(), i.e. what’s the difference between these two objects? Read the help for ?abort to learn more.
+
+```{r}
+# The rlang condition object
+rlang_cnd <- rlang::catch_cnd(
+  expr = rlang::abort(message = "help")
+)
+str(rlang_cnd)
+# Built-in condition object
+built_in_cnd <- rlang::catch_cnd(
+  expr = base::stop("help", call. = FALSE)
+)
+str(built_in_cnd)
+```
+
+**Similarities**
+
+* Both objects are list objects. However, the built-in condition object has two elements compared to the `rlang` condition objects, which has three.
+
+* Both objects have a "call" or "parent" element, which is the call that triggered the condition. Both are NULL since I suppressed the printing of the call in `stop()` and `rlang::abort()` by default does not print the call.
+
+* Both objects have a "message" element.
+
+**Differences**
+
+* The `rlang` condition object has a "trace" element, which is in and of itself a list of three elements. This element is created by `rlang::trace_back()`.
+  
+  - A backtrack captures the sequence of calls that lead to the function that throws the error, this is a call stack. 
+  
+---
+
+## Exercise 2
+
+Predict the results of evaluating the following code:
+
+```{r}
+show_condition <- function(code) {
+  tryCatch(
+    error = function(cnd) "error",
+    warning = function(cnd) "warning",
+    message = function(cnd) "message",
+    {
+      code
+      NULL
+    }
+  )
+}
+```
+
+* The following will return "error", since `stop()` will create a condition object to be passed to the exiting handler matching with `error`. The Null value is not printed since the control is never passed back to the original code where the condition object is triggered:
+
+```{r}
+show_condition(stop("!"))
+```
+
+* The following will return the NULL object as no condition is signaled by the input `10L`. However, only the NULL object in {} is printed as 10L is not an expression but a vector:
+
+```{r}
+show_condition(10L)
+```
+
+* The following will print "warning" for the same reason as the first one:
+
+```{r}
+show_condition(warning("?!"))
+```
+
+* The following will print "message". The double vector 10 does not create a condition object but `message("?")` will and `warning("?!")` is never run since control is never returned back to this code once the message handler completes:
+
+```{r}
+show_condition({
+  10
+  message("?")
+  warning("?!")
+})
+```
+
+---
+
+## Exercise 3
+
+Explain the results of running this code:
+
+```{r}
+withCallingHandlers( # level 2
+  message = function(cnd) message("b"),
+  withCallingHandlers( # Level 1
+    message = function(cnd) message("a"),
+    {
+      message("c")
+    }
+  )
+)
+```
+
+* The code `message("c")` creates a condition object that is passed to level 1 calling handler, which prints `message("a")`. This, in turn, creates a condition object that is passed to level 2 calling handler at the toppest level, which prints `b` to the console instead of `message("b")` as there is no more calling handler on top to capture the message condition.
+
+* After level 2 calling handler completes, control is passed back to the context in which the condition is signaled, and level 1 calling handler is run. This leads to `message("c")` being captured and `a` being printed to the console. The character vector `a` is printed instead of `message("a")` as it is no longer caught by level 1 calling handling since handlers are applied in order. Or else we would be stuck in an infinite loop.
+
+* After level 1 calling handler completes, control is passed back to the context in which the condition is signaled, and `message("c")` is run. This triggers level 2 calling handler again and so `b` is printed to console.
+
+* After level 2 calling handler completes another time, control is passed back to the context in which `message("c")` is called and `c` is finally printed to console since it is no longer captured as a condition by the calling handlers up top.
+
+---
+
+## Exercise 4
+
+```{r}
+catch_cnd
+```
+
+* The function `rep_named(names, x)` repeats a value along a names vectors:
+
+```{r}
+# One element character vector produces a list with one vector element
+rep_named(names = c("condition"), x = list(identity))
+```
+
+---
+
+The original source code of `catch_cnd()` was much simpler:
+
+```{r, eval=FALSE}
+catch_cnd <- function(expr) {
+  tryCatch(
+    condition = function(cnd) cnd,
+    {
+      force(expr)
+      return(NULL)
+    }
+  )
+}
+```
+
+---
+
+## Exercise 5
+
+Rewrite `show_condition()` to use a single handler:
+
+```{r}
+show_condition2 <- function(code, class) {
+  if (class == "error") {
+    tryCatch(
+      error = function(cnd) "error",
+      {
+        code
+        NULL
+      }
+    )
+  } else if (class == "message") {
+    tryCatch(
+      message = function(cnd) "message",
+      {
+        code
+        NULL
+      }
+    )
+  } else if (class == "warning") {
+    tryCatch(
+      warning = function(cnd) "warning",
+      {
+        code
+        NULL
+      }
+    )
+  } else {
+    rlang::abort(
+      message = "Class must either by 'error,' 'message,' or 'warning.'"
+    )
+  }
+}
+```
+
+Let us see it in action:
+
+```{r}
+show_condition2(code = stop("!"), class = "error")
+```
+
+Another example:
+
+```{r}
+# Since the class and condition are mismatched, the code runs normally
+show_condition2(code = message("!"), class = "error")
+```
+
+Another example:
+
+```{r}
+show_condition2(code = message("!"), class = "message")
+```
+
+---
+
+Another solution:
+
+```{r}
+show_condition3 <- function(code) {
+  tryCatch(
+    condition = function(cnd) {
+      if (inherits(x = cnd, what = "error")) {
+        return("error")
+      }
+      if (inherits(cnd, "warning")) {
+        return("warning")
+      }
+      if (inherits(cnd, "message")) {
+        return("message")
+      }
+    },
+    {
+      code
+      NULL
+    }
+  )
+}
+```
+
+In this implementation, `inherits(x = cnd, what = "class")` returns `TRUE` if `cnd` is indeed a condition object of the class "class". This is essentially checking if `class(cnd)` is "class", returning `TRUE` or `FALSE` depending on the outcome. This solution is shorter than my original solution.
+
+---
+
+Let us see it in action:
+
+```{r}
+show_condition3(code = stop("!"))
+```
+
+Another example:
+
+```{r}
+show_condition3(code = message("!"))
+```

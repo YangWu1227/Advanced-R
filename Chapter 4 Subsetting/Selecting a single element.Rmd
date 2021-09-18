@@ -1,0 +1,223 @@
+---
+title: "Selecting a single element"
+author: "Ken Wu"
+date: "6/21/2021"
+output:
+  bookdown::html_document2:
+    toc: true
+    toc_float: true
+    number_sections: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(collapse = TRUE)
+knitr::opts_chunk$set(comment = NA)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(fig.width = 5, fig.height = 3, fig.align = "center")
+library(tidyverse)
+```
+
+## Two other subsetting operators [[ and $
+
+[[ is most important when working with lists because subsetting a list with [ always returns a smaller list:
+
+```{r}
+# Create a list
+x <- list(1:3, "a", 4:6)
+str(x)
+# Subsetting using [ returns a smaller list
+str(x[3])
+# Subsetting using [[ returns the object (a vector) the list element points to
+str(x[[3]])
+```
+
+When extracting multiple (or even zero!) elements, you have to make a smaller list by subletting with the [ operator. The [[ operator must be used with a single positive integer or a single string. If a vector is used with [[ then it will subset recursively:
+
+```{r}
+x[[c(1, 3)]]
+# Equivalent to
+x[[1]][[3]]
+```
+
+For consistency, use [[ to extract a single value with atomic vectors too. Use [ to extract multiple elements.
+
+---
+
+The "$" operator is a shorthand operator:
+
+```{r}
+mtcars$mpg
+# Equivalent to
+mtcars[["mpg"]]
+# Type
+typeof(mtcars[["mpg"]])
+```
+
+One difference between $ and [[ is that the former uses left-to-right partial matching:
+
+```{r}
+# Create a list
+x <- list(obc = 1)
+# Partial matching
+x$o
+# No partial matching
+x[["o"]]
+```
+
+---
+
+## purrr::pluck() and purrr::chuck()
+
+```{r}
+# Create a named list
+x <- list(
+  a = list(1, 2, 3),
+  b = list(3, 4, 5)
+)
+# Structure
+str(x)
+# Attributes
+attributes(x)
+# Names is a character vector (metadata)
+is.character(names(x))
+```
+
+When the element is missing, pluck() always returns NULL (or the value of the .default argument) and chuck() always throws an error. The function pluck() also allows you to mix integer and character indices, and provides an alternative default value if an item does not exist:
+
+* Example 1
+
+```{r}
+# Select the object list "a" from the list x
+# From list "a", select the first element
+purrr::pluck(x, "a", 1)
+# Structure
+str(purrr::pluck(x, "a", 1))
+# Returns a double vector of length 1
+is.double(purrr::pluck(x, "a", 1))
+# Using chuck()
+purrr::chuck(x, "b", 2)
+```
+
+* Example 2
+
+```{r}
+# Missing element returns NULL
+purrr::pluck(x, "c", 1)
+# Alternative default value 
+purrr::pluck(x, "c", 1, .default = "Does not exist")
+```
+
+---
+
+## Exercises
+
+### Exercises 1 
+
+```{r}
+# Data set
+as.tibble(mtcars)
+# Select third value from the cyl variable
+mtcars[["cyl"]][[3]]
+# Second 
+mtcars[[2]][[3]]
+# Third 
+mtcars[[c(2, 3)]]
+# Fourth 
+mtcars$cyl[[3]]
+# Fifth 
+purrr::pluck(mtcars, "cyl", 3)
+# Sixth 
+purrr::chuck(mtcars, "cyl", 3)
+# Seventh 
+mtcars[2]$cyl[[3]]
+# Eighth
+mtcars[, 2][[3]]
+# Select the "cyl" column and the third value from the vector
+mtcars[, "cyl"][[3]]
+# Tenth (View tibble as a matrix and subset using two indices)
+mtcars[3, 2]
+# Select third row and select the second column
+mtcars[3, ][, 2]
+# Twelveth
+with(mtcars, cyl[[3]])
+```
+
+---
+
+### Exercise 2
+
+```{r}
+# Model
+model <- lm(mpg ~ wt, data = mtcars)
+# Type
+typeof(model)
+# Attributes
+attributes(model)
+# Extract DF residual (A single value)
+model[["df.residual"]]
+# Or alternatively
+model$df.residual
+# Type
+typeof(model[["df.residual"]])
+```
+
+Second task:
+
+```{r}
+# Type of object that summary() returns
+typeof(summary(model))
+# Attributes
+attributes(summary(model))
+# Extract R squared (Another )
+summary(model)[["r.squared"]]
+# Or alternatively
+summary(model)$r.squared
+# Type
+typeof(summary(model)[["r.squared"]])
+```
+
+---
+
+## Subsetting and assignment
+
+The basic form is x[i] <- value:
+
+```{r}
+# Create a vector
+x <- 1:5
+# Select the fifth and third values, in that order,
+# Replace them with 20 and 77, respectively
+x[c(5, 3)] <- c(20, 77)
+x
+```
+
+Ensure that length(value) is the same as length(x[i]) to avoid unexpected results. For lists, the syntax is x[[i]] <- NULL to remove a component. Use x[[i]] <- list(NULL) to add a literal NULL.
+
+```{r}
+# Create a list
+x <- list(a = c(3, 4), b = 4, c = 7)
+# Remove the first object
+x[["a"]] <- NULL
+# Add literal NULL
+x[["b"]] <- list(NULL)
+```
+
+Subsetting with nothing can be useful with assignment because it preserves the structure of the original object. Compare the following two expressions. In the first, mtcars remains a data frame because you are only changing the contents of mtcars, not mtcars itself. In the second, mtcars becomes a list because you are changing the object it is bound to.
+
+```{r}
+# Subsetting with nothing
+mtcars[] <- lapply(mtcars, as.integer)
+is.data.frame(mtcars)
+# No subsetting
+mtcars <- lapply(mtcars, as.integer)
+is.data.frame(mtcars)
+```
+
+```{r}
+rm(list = ls())
+```
+
+
+

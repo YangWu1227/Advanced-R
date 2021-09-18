@@ -1,0 +1,498 @@
+---
+title: "Lexical Scoping and Lazy Eval"
+author: "Ken Wu"
+date: "7/15/2021"
+output:
+  bookdown::html_document2:
+    toc: true
+    toc_float: true
+    number_sections: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(collapse = TRUE)
+knitr::opts_chunk$set(comment = NA)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(fig.width = 6, fig.height = 4, fig.align = "center")
+library(tidyverse)
+options(digits = 7)
+```
+
+## Lexical Scoping
+
+While **assigning** is the act of binding a name to a value, **scoping** is the act of finding the value associated with a name. R uses **lexical scoping**; it looks up the values of names based on how a function is defined, not how it is called.
+
+## Name masking
+
+Names defined inside of a function mask names defined outside of a function.
+
+```{r}
+# Names defined outside
+x <- 10
+y <- 20
+# Function binding those same names to new value objects
+g02 <- function() {
+  x <- 1
+  y <- 2
+  c(x, y)
+}
+# Call the function, which masks x and y defined outside
+g02()
+# However, this does not change the previous values of x and y
+x
+y
+```
+
+If a name is not defined inside of a function, R looks one level up. For instance, if a function is defined inside of another function. The scoping procedure is as follows:
+
+1. R looks inside the current function for the value(s) associated with the name(s).
+2. Next, R looks where the current function was defined (and so on, all the way up to the global environment). 
+3. Finally, it looks in other loaded packages.
+
+```{r}
+# Name defined outside
+x <- 23
+# Function that prints x and y
+# The name "y" is defined inside of the function
+# The name "x" is not defined inside and so R looks in the global environment
+g03 <- function() {
+  y <- 1
+  c(x, y)
+}
+g03()
+```
+
+## Ex
+
+```{r}
+# Define "x" in global environment
+x <- 1
+g04 <- function() {
+  # Define "y" one level down from the global env in the function g04
+  y <- 2
+  i <- function() {
+    # Define "z" two levels down from the global env in the function i nested in g04
+    z <- 3
+    c(x, y, z)
+  }
+  # "z" is defined inside the function
+  # "y" is scoped one level up in the function g04 where the function i was defined
+  # "x" is scoped two levels up in the global env where g04 is defined
+  i()
+}
+# Returns 1,2, and 3
+g04()
+```
+
+---
+
+## Functions versus variables
+
+Scoping rules apply to function objects just like value objects.
+
+```{r}
+# Function defined outside
+g07 <- function(x) x + 1
+# Function defined inside
+g08 <- function() {
+  # The function g07 is re-defined and the g07 is the global env is masked
+  g07 <- function(x) x + 100
+  # Call g07 within the g08 function call
+  # R scopes the g07 at this level and not the global env
+  g07(10)
+}
+# Returns 110 and not 11
+g08()
+# This should return 11
+g07(10)
+```
+
+When a function object and a non-function object share the same name; they must reside in different environments to do so. When a name is used in a function call, R ignores non-function objects when scoping for the value associated with that name.
+
+```{r}
+# Function object defined outside of the function g10
+g09 <- function(x) x + 100
+# Function call
+g10 <- function() {
+  # Bind the name to the vector (non-functional) object
+  g09 <- 10
+  # The function call ignore the g09 vector object and scopes in a level above
+  # Here the name g09 takes on two different values
+  g09(g09)
+}
+# Returns 110
+g10()
+```
+
+---
+
+## A fresh start
+
+```{r}
+# Function
+g11 <- function() {
+  # If there is no variable with the name "a"
+  # The ! is used since we what the first executable action to be associated
+  # With the scenario where there is no variable named "a"
+  # In this case, the function exits() returns FALSE and the ! negation makes it TRUE
+  if (!exists("a")) {
+    # Create an vector object 1 and bind "a" to it
+    a <- 1
+  } else {
+    # Or else add 1 to the already existing object with the name "a"
+    a <- a + 1
+  }
+  a
+}
+# The function returns 1 not matter haw many times we run it hence the fresh start
+g11()
+g11()
+```
+
+This happens because every time a function is called a new environment is created to host its execution. This means that a function has no way to tell what happened the last time it was run; each invocation is completely independent.
+
+---
+
+## Dynamic lookup
+
+Lexical scoping determines where, but not when to look for values. R looks for values when the function is run, not when the function is created. Together, these two properties tell us that the output of a function can differ depending on the objects outside the function’s environment:
+
+```{r}
+# Function
+g12 <- function() x + 1
+# Name defined in the global env
+x <- 15
+# Call function
+g12()
+# Re-define the name x results in different output
+x <- 20
+g12()
+```
+
+Use the following function to list all external dependencies within a function:
+
+```{r}
+codetools::findGlobals(g12)
+codetools::findGlobals(g11)
+```
+
+You can manually change the function’s environment to the `emptyenv()`, an environment which contains nothing:
+
+```{r}
+# See environment
+environment(g12)
+# Change environment
+environment(g12) <- emptyenv()
+environment(g12)
+```
+
+R relies on lexical scoping to find everything, from the obvious, like mean(), to the less obvious, like + or even {. 
+
+---
+
+## Exercises
+
+### Exercise 1
+
+What does the following code return? Why? Describe how each of the three c’s is interpreted.
+
+```{r}
+# Create an object and bind the name "c" to it
+c <- 10
+# Create a named vector
+c(c = c)
+# Type double vector
+typeof(c(c = c))
+# Structure
+str(c(c = c))
+# Name attributes
+attributes(c(c = c))
+# Type of the name
+typeof("c")
+```
+
+The `c()` is a function call and it is a primitive function. The first "c" in the parenthesis is a character vector used as the name of the value "c," the second "c" in the parenthesis.
+
+---
+
+### Exercise 2
+
+Four principles that govern R scoping, i.e. how R looks for values:
+
+1. Dynamic look-up
+2. Fresh start
+3. Name masking
+4, Function versus variables are more complicated when applying name masking rules
+
+---
+
+### Exercise 3
+
+```{r}
+f_1 <- function(x) {
+  f_2 <- function(x) {
+    f_3 <- function() {
+      # "x" is not defined in this environment so move up a level
+      x^2
+    }
+    # "x" is not defined in this level also, move up one more level
+    f_3() + 1
+  }
+  # "x" is define in this level as the argument of the function creates the value
+  f_2(x) * 2
+}
+# Prediction: This should return 202
+f_1(10)
+```
+
+1. In the inner-most function `f_3()`, "x" is raised to the power of 2, but x is not defined at the level. Move up a level to where `f_3()` is defined, which is within `f_2()`.
+2. In `f_2()`, the function `f_3()` is called and the output of `f_3()` is altered by `f_2()`: that is, `f_2()` adds one to the output of `f_3()`. Still, the "x" name is not defined at this level. Move up a level to where `f_2()` is defined, which is within `f_1()`. 
+3. In `f_1()`, "x" is set by the argument of the function and so here is where `f_3()` scopes its value for "x."
+4. The sequence of operation is precisely: ((10 ^ 2) + 1) * 2.
+
+---
+
+## Lazy evaltuaion
+
+Function arguments are **lazily evaluated**; they are only evaluated if accessed. The code below does not generate the error message since the argument "x" is not accessed in the function.
+
+```{r}
+h01 <- function(x) {
+  10
+}
+h01(stop("This is an error!"))
+```
+
+---
+
+## Default arguments
+
+Default values can be defined in terms of **other arguments**, or even in terms of **variables defined later in the function**:
+
+```{r}
+h04 <- function(x = 1, y = x * 2, z = a + b) {
+  a <- 10
+  b <- 100
+
+  c(x, y, z)
+}
+h04()
+```
+
+**Note**: Default arguments are evaluated inside the function. User supplied arguments are evaluated in the global environment. The function `ls()` and objects return a vector of character strings giving the names of the objects in the specified environment. When invoked with no argument at the top level prompt, ls shows what data sets and functions a user has defined. 
+
+```{r}
+h05 <- function(x = ls()) {
+  a <- 1
+  x
+}
+# The default argument ls() is evaluated inside h05
+h05()
+# User supplied argument ls() is evaluated in global environment
+h05(x = ls())
+str(h05(x = ls()))
+```
+
+---
+
+## Missing arguments
+
+Use `missing()` to determine if an argument's value comes from the user or from a default value: Does a Formal Argument have a Value? As such, `missing()` can be used to test whether a value was specified as an argument to a function.
+
+```{r}
+# A default argument is specified in this case so missing should return TRUE
+h06 <- function(x = 10) {
+  list(missing(x), x)
+}
+# Structure
+str(h06())
+# A argument is supplied by the user and so missing should return FALSE
+str(h06(10))
+```
+
+## Example
+
+```{r}
+# Number of arguments for sample()
+# Two required and two default
+args(name = sample)
+# Source code
+sample
+```
+
+It appears that if "size = " is not supplied (in which case (missing(size)) would evaluate to TRUE), size is set to the length of the x vector, which could either be a length-one vector or vector with length greater than one. If x has length 1, is numeric (in the sense of is.numeric) and x >= 1, sampling via sample takes place from 1:x.
+
+---
+
+## Rewrite sample
+
+```{r}
+sample_hadley <- function(x, size = NULL, replace = FALSE, prob = NULL) {
+  # If size is not supplied
+  # That is, (is.null(size)) evaluates to TRUE
+  if (is.null(size)) {
+    # Set size to length of x, which must be a vector greater than 1
+    # This is a simplified version of sample
+    size <- length(x)
+  }
+
+  x[sample.int(length(x), size, replace = replace, prob = prob)]
+}
+```
+
+---
+
+Using the infix function, which uses the left side if the left side is not NULL; if the left side is NULL then the function uses the right side:
+
+```{r}
+# This function is defined in R
+rlang::is_closure(`%||%`)
+# Source code
+`%||%`
+# Rewrite sample using the infix function
+sample_hadley_infix <- function(x, size = NULL, replace = FALSE, prob = NULL) {
+  # Set size to size (left side) if the user supplies the argument
+  # Set size to length(x) (right size) if size is NULL
+  size <- size %||% length(x)
+  x[sample.int(length(x), size, replace = replace, prob = prob)]
+}
+```
+
+---
+
+## Exercises
+
+### Exercise 1
+
+What important property of && makes x_ok() work?
+
+```{r}
+# Function
+x_ok <- function(x) {
+  # If the "first" element of x is NULL the first condition will evaluate to FALSE
+  # (length(x) == 1) evaluate to TRUE is x is a length-one vector
+  # (x > 0) Evaluates to TRUE if the "first" element of x is greater than zero
+  !is.null(x) && length(x) == 1 && x > 0
+}
+# Test
+x_ok(NULL)
+x_ok(1)
+x_ok(1:3)
+```
+
+* In summary: && (AND) short-circuits which means that if the left-hand side is FALSE it doesn’t evaluate the right-hand side. It doesn’t matter what the right hand side evaluates to after the first condition is FALSE. All three conditions must be TRUE (the intersection of those three conditions) for the function to return TRUE. Similarly, if the left-hand side of || (OR) is TRUE it doesn’t evaluate the right-hand side. If the left hand side evaluates to TRUE, then the union of the three events is already achieved.
+
+* We expect x_ok() to validate its input via certain criteria: it must not be NULL, have length 1 and be greater than 0. Meaningful outcomes for this assertion will be TRUE, FALSE or NA. The desired behavior is reached by combining the assertions through && instead of &.
+
+```{r}
+# Using the single & operator
+x_ok <- function(x) {
+  !is.null(x) & length(x) == 1 & x > 0
+}
+x_ok(NULL)
+x_ok(1)
+x_ok(1:3)
+```
+
+
+* Another property is that && does not perform element wise comparisons (it is not vectorized); instead it uses the first element of each value only. It also uses lazy evaluation, in the sense that evaluation “proceeds only until the result is determined” (from ?Logic). This means that the RHS of && won’t be evaluated if the LHS already determines the outcome of the comparison (e.g. evaluate to FALSE). This behavior is also known as “short-circuiting.” For some situations (x = 1) both & and && operators will lead to the same result. But this is not always the case. For x = NULL, the &&-operator will stop after the !is.null statement and return the result. The following conditions won’t even be evaluated! (If the other conditions are also evaluated (by the use of &), the outcome would change. NULL > 0 returns logical(0), which is not helpful in this case.)
+
+* We can also see the difference in behavior, when we set x = 1:3. The &&-operator returns the result from length(x) == 1, which is FALSE. Using & as the logical operator leads to the (vectorised) x > 0 condition being evaluated and also returned.
+
+---
+
+### Exercise 2
+
+What does this function return? Why? Which principle does it illustrate?
+
+```{r}
+# Function with default argument, which can be defined in terms of variables in the function
+f2 <- function(x = z) {
+  z <- 100
+  x
+}
+# This should return 100
+f2()
+```
+
+The function returns 100. The default argument (x = z) gets lazily evaluated within the function environment when x gets accessed. At this time z has already been bound to the value 100. The illustrated principle here is lazy evaluation.
+
+---
+
+### Exercise 3
+
+What does this function return? Why? Which principle does it illustrate?
+
+```{r}
+# Define y in the global environment
+y <- 10
+# Function with default argument
+# {y <- 1; 2} sets y to 1 and therefore x <- y <- 1 and y = 0
+f1 <- function(x =
+                 {
+                   y <- 1
+                   2
+                 },
+               y = 0)
+{
+  c(x, y)
+}
+f1()
+y
+```
+
+The function returns c(2, 1) which is due to **name masking**. When "x" is accessed within c(), the promise x = {y <- 1; 2} is evaluated inside f1()’s environment. Then, "y" gets bound to the value 1 and the return value of {() (2) gets assigned to x, which is 2. When "y" gets accessed next within c(), it has already the value 1 and R doesn’t need to look it up any further. Therefore, the promise y = 0 won’t be evaluated. Also, as y is assigned within f1()’s environment, the value of the global variable y is left untouched due to **name masking**.
+
+---
+
+### Exercise 4
+
+In hist(), the default value of xlim is range(breaks), the default value for breaks is "Sturges", and
+
+```{r}
+range("Sturges")
+```
+
+The function `range()` returns a vector containing the minimum and maximum of all the given arguments. For `hist()`, the default algorithm for computing histogram breaks is "Sturges" with corresponding function--- nclass.Sturges. The xlim argument of hist() defines the range of the histogram’s x-axis. In order to provide a valid axis xlim must contain a numeric vector of exactly two unique values. Consequently, for the default xlim = range(breaks)), breaks must evaluate to a vector with at least two unique values. Breaks can be one of:
+
+* a vector giving the breakpoints between histogram cells,
+
+* a function to compute the vector of breakpoints,
+
+* a single number giving the number of cells for the histogram,
+
+* a character string naming an algorithm to compute the number of cells (see ‘Details’),
+
+* a function to compute the number of cells.
+
+During execution hist() overwrites the breaks argument. The breaks argument is quite flexible and allows the users to provide the breakpoints directly or compute them in several ways. Therefore, the specific behavior depends highly on the input. But hist ensures that breaks evaluates to a numeric vector containing at least two unique elements before xlim is computed.
+
+---
+
+### Exercise 5
+
+Explain why this function works. Why is it confusing?
+
+```{r}
+show_time <- function(x = stop("Error!")) {
+  # Create a function object that finds the system time and bind the name "stop" to it
+  stop <- function(...) Sys.time()
+  # Print x which has a default value
+  print(x)
+}
+show_time()
+```
+
+Here, we have a situation where a two function object share the same name--- "stop." The default argument x = stop("Error!") is evaluated inside of the function environment, This name "stop" then gets assigned to another function object (and thus masking the default argument), which finds the system time. 
+
+Before show_time() accesses x (default stop("Error")), the stop() function is masked by function(...) Sys.time(). As default arguments are evaluated in the function environment, print(x) will be evaluated as print(Sys.time()).
+
+This function is confusing because its behavior changes when the x value is supplied directly by the user. Now the x value from the calling environment will be used and the overwriting of stop() within the show_time() environment won’t affect x anymore.
+
+```{r}
+# User supplied is evaluated in the global environment
+# show_time(x = stop("Error!"))
+# Error in print(x) : Error!
+```

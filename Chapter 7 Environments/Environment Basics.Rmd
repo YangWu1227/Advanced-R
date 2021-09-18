@@ -1,0 +1,424 @@
+---
+title: "Environment Basics"
+author: "Ken Wu"
+date: "8/24/2021"
+output:
+  bookdown::html_document2:
+    toc: true
+    toc_float: true
+    number_sections: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(collapse = TRUE)
+knitr::opts_chunk$set(comment = NA)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(fig.width = 6, fig.height = 4, fig.align = "center")
+library(tidyverse)
+library(rlang)
+options(digits = 4)
+```
+
+## Environment basics
+
+R's an environment is similar to a **named list**, with four important exceptions:
+
+* Every name must be unique.
+
+* The names in an environment are not ordered.
+
+* An environment has a parent.
+
+* Environments are not copied when modified (modified in place).
+
+### Creating
+
+* Using `rlang`:
+
+```{r}
+e1_rlang <- rlang::env(
+  "ken" = 7,
+  "wu" = "is",
+  "the" = 9:12,
+  "best" = TRUE
+)
+e1_rlang
+```
+
+* Base R (cannot simultaneously create and define values like `rlang`):
+
+```{r}
+e1_base <- base::new.env()
+# Manual modification
+e1_base$i <- "ken"
+```
+
+The role of an environment is to associate, or bind, a set of names to a set of values--- a bag of names, with no implied order. An environment can contain itself:
+
+```{r}
+e1_rlang[["itself"]] <- e1_rlang
+```
+
+Examine the structure:
+
+```{r}
+rlang::env_print(e1_rlang)
+rlang::env_print(e1_base)
+```
+
+Print:
+
+```{r}
+# A character vector giving the current bindings
+rlang::env_names(e1_rlang)
+# Or
+names(e1_base)
+# Or
+ls(all.names = TRUE)
+```
+
+---
+
+### Important environments
+
+Some useful functions:
+
+* To get current environment:
+
+```{r}
+rlang::current_env()
+```
+
+* To get global environment:
+
+```{r}
+rlang::global_env()
+```
+
+* In base R:
+
+```{r}
+base::globalenv()
+base::environment()
+```
+
+```{r, include=FALSE}
+rm(list = ls())
+```
+
+---
+
+## Parents
+
+Every environment has a parent, another environment. In diagrams, the parent is shown as a small pale blue circle and arrow that points to another environment. This powers lexical scoping--- if a name is not found in an environment, then R will look in its parent, and so on.
+
+```{r, include=FALSE}
+knitr::include_graphics(path = "Diagrams/parents.png")
+```
+
+Set parent by supplying an unnamed argument to `rlang::env()`, or it would default to the current environment.
+
+```{r}
+# Create parent env
+e2a <- rlang::env(d = 4, e = 5)
+# Create new env
+e2b <- rlang::env(e2a, a = 1, b = 2, c = 3)
+```
+
+Access the parent with:
+
+```{r}
+# Parent
+e2a
+# Get parent
+rlang::env_parent(env = e2b)
+# Get the parent of parent, which is the global env
+rlang::env_parent(env = e2a)
+```
+
+Notice that the function uses a singular noun--- parent.
+
+---
+
+Only the **empty** environment does not have a parent. The ancestors of every environment eventually terminate with the empty environment. Use the function `rlang::env_parents()` (plural parents) to see all ancestors. By default, `rlang::env_parents()` stops when it gets to the global environment. 
+
+```{r}
+# Examine ancestors
+rlang::env_parents(env = e2b)
+```
+
+**The ancestors of the global environment include every attached package**, and so printing all would not be too useful. But we can override the default and see for ourselves:
+
+```{r, eval=FALSE}
+rlang::env_parents(env = e2b, last = rlang::empty_env())
+```
+
+In base R, use `parent.env()` to find the parent of an environment:
+
+```{r}
+base::parent.env(env = e2b)
+```
+
+No function in base R returns all ancestors.
+
+---
+
+## Super assignment, <<-
+
+While regular assignment operator always creates a variable in the current environment, be it the global environment or a function environment. The super assignment operator never creates a variable in the current environment, but instead modifies an existing variable found in a parent environment.
+
+```{r}
+# Create a double vector and a binding from the name "x" to this object
+x <- 0
+# This object is in the global environment
+rlang::env_names(rlang::global_env())
+# Create a function that modifies x from within the function environment
+f <- function() {
+  x <<- 7
+}
+# Call the function and the object referenced by the name "x" should have been modified
+f()
+# Results
+x
+```
+
+If the super assignment operator doesn't find an existing variable, it will create one in the global environment. It is most often used in conjunction with a function factory. 
+
+---
+
+## Getting and setting
+
+We can get and set elements of an environment, which is similar to a named list, with the subsetting operators $ and [[ the same way we would a list:
+
+```{r}
+# Set element
+e3 <- env(x = 1, y = "job")
+# Subset by name (character indexing)
+e3[["x"]]
+# Combine subsetting and assignment to add an element to the environment
+e3[["z"]] <- TRUE
+# Get this element using a prefix form function of the subsetting operator [[
+`[[`(e3, "z")
+# See all elements
+rlang::env_names(env = e3)
+```
+
+**Note**: we cannot subset with `[[` using numeric indices and we cannot use `[` to select multiple elements. Furthermore, subsetting will return NULL if the binding doesn't exist:
+
+```{r}
+`[[`(e3, "xyz")
+```
+
+Use `rlang::env_get(env, nm)` to extract an object from an environment (nm must be a single string):
+
+```{r}
+# Get value
+rlang::env_get(env = e3, nm = "x")
+# Use default value if the binding doesn't exist
+rlang::env_get(env = e3, nm = "ken", default = "Binding does not exist")
+```
+
+---
+
+There are two other ways to add bindings to an environment:
+
+* `rlang::env_poke(env, nm, value)` for a single binding:
+
+```{r}
+# Add a logical vector of length 2 named "new"
+rlang::env_poke(env = e3, nm = "new", value = c(FALSE, TRUE))
+`[[`(e3, "new")
+```
+
+* `rlang::env_bind(.env, ...)` for multiple bindings:
+
+```{r}
+# Add multiple objects
+rlang::env_bind(.env = e3, hi = "ken", bye = 3)
+rlang::env_names(e3)
+```
+
+* `rlang::env_has(env, nms)` checks if an environment has "nms", which is a character vector of names:
+
+```{r}
+rlang::env_has(e3, nms = c("y", "messi"))
+```
+
+---
+
+To remove bindings from an environment, use `rlang::env_unbind(env, nms)`
+
+```{r}
+# Remove
+rlang::env_unbind(env = e3, nms = c("hi", "bye"))
+# Check if the environment still has those objects
+rlang::env_has(e3, nms = c("hi", "bye"))
+```
+
+Unbinding a name does not delete the object, which is the job of the garbage collector.
+
+---
+
+In base R, the list of functions are:
+
+* `get(x, pos = -1, envir = as.environment(pos), mode = "any", inherits = TRUE)`
+
+* `assign(x, value, pos = -1, envir = as.environment(pos), inherits = FALSE, immediate = TRUE)`
+
+* `exists(x, where = -1, envir = , frame, mode = "any", inherits = TRUE)`
+
+* `rm(..., list = character(), pos = -1, envir = as.environment(pos), inherits = FALSE)`
+
+When inherits is TRUE, these functions will inspect the supplied environment and all of its ancestors. Be careful when using `rm()` as it may remove unwanted objects. 
+
+```{r}
+# New way to remove all objects
+rlang::env_unbind(env = rlang::global_env(), nms = ls())
+```
+
+---
+
+## Exercises
+
+### Exercise 1
+
+List three ways in which an environment differs from a list:
+
+1. Names in an environment has to unique where as a list does not enforce this property.
+
+2. We cannot subset with numeric indices and the single square bracket subsetting operator `[`.
+
+3. Subsetting and assigning NULL does not remove a element from an environment.
+
+4. Environments have parents.
+
+5. Environment modifies-in-place.
+
+6. The names in an environment are not ordered.
+
+7. Environments can only be compared via `identical()` and not with `==`.
+
+---
+
+### Exercise 2
+
+Create an environment as illustrated by the following picture:
+
+```{r}
+knitr::include_graphics(path = "Diagrams/exercise2.png")
+```
+
+```{r}
+# Create an an environment
+e <- rlang::env()
+# Now add a binding to the environment that is itself
+rlang::env_poke(env = e, nm = "loop", value = e)
+# Verify that the environment contains itself
+lobstr::ref(e)
+```
+
+---
+
+### Exercise 3
+
+Create a pair of environments as illustrated by this picture:
+
+```{r}
+knitr::include_graphics(path = "Diagrams/exercise3.png")
+```
+
+First:
+
+```{r}
+# Create right env
+e_right <- rlang::env()
+# See its address
+e_right
+```
+
+Next:
+
+```{r}
+# Create left env so it contains the right environment
+e_left <- rlang::env(dedoop = e_right)
+# Check its address and reference
+lobstr::ref(e_left)
+```
+
+Finally:
+
+```{r}
+# Ensure that the right one also contains the left
+rlang::env_poke(env = e_right, nm = "loop", value = e_left)
+# Now check their addresses and references
+lobstr::ref(e_right)
+lobstr::ref(e_left)
+```
+
+---
+
+### Exercise 4
+
+Explain why `e[[1]]` and `e[c("a", "b")]` don’t make sense when e is an environment.
+
+Subsetting by `[[` and numeric indices does not work since the names are not ordered; it does not make sense for one to select the first element of an environment. What does it mean to be the first? And how to determine it? 
+
+The second option would return two objects at the same time. What data structure would they be contained inside?
+
+---
+
+### Exercise 5
+
+Create a version of `rlang::env_poke(env = rlang::caller_env(), nm, value, inherit = FALSE, create = !inherit)` that only bind new names, never re-bind old names. Some programming languages only do this, and are known as single assignment languages.
+
+```{r}
+modified_env_poke <- function(env, nm, value) {
+
+  # Check to see if the nm already exists in the environment
+  ifelse(test = rlang::env_has(env = env, nms = nm),
+    yes = rlang::abort(message = "The binding already exists in the environment."),
+    no = rlang::env_poke(env = env, nm = nm, value = value)
+  )
+
+  # Do not print the environment since we only need the side effect of rlang::env_poke()
+  # That is, add binding or rebinding to the environment
+  base::invisible(env)
+}
+```
+
+Let us see it in action:
+
+```{r}
+# Create an environment with a binding
+e <- rlang::env(x = "Ken")
+# Try to rebind and this should not return a error since the binding does not already exist
+modified_env_poke(env = e, nm = "y", value = 1772)
+e[["y"]]
+```
+
+---
+
+### Exercise 6
+
+What does this function do? How does it differ from <<- and why might you prefer it?
+
+```{r}
+rebind <- function(name, value, env = caller_env()) {
+  # If env is the empty environment, return an error message
+  # Since the empty environment does not contain "name"
+  # This function will not add a binding to caller_env()
+  if (identical(env, empty_env())) {
+    stop("Can't find `", name, "`", call. = FALSE)
+    # If caller_env() already has an existing binding with "name" , then rebind
+  } else if (env_has(env, name)) {
+    env_poke(env, name, value)
+    # Or else, call this function recursively
+  } else {
+    rebind(name, value, env_parent(env))
+  }
+}
+```
+
+This a recursive function that only rebinds when there is an existing binding in the environment. It checks all the ancestors of the `crlang::caller_env()` and stops when it reaches the empty environment. The function `rlang::caller_env()` returns the current environment, which is the execution environment of the current function (the one currently being evaluated). The caller environment is the execution environment of the function that called the current function.

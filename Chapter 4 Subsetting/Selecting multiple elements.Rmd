@@ -1,0 +1,493 @@
+---
+title: "Subsetting"
+author: "Ken Wu"
+date: "6/20/2021"
+output:
+  bookdown::html_document2:
+    toc: true
+    toc_float: true
+    number_sections: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(collapse = TRUE)
+knitr::opts_chunk$set(comment = NA)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(fig.width = 5, fig.height = 3, fig.align = "center")
+library(tidyverse)
+```
+
+## Selecting multiple elements
+
+### Atomic Vectors
+
+There are six ways to subset atomic vectors:
+
+```{r}
+# Number after decimal represents original position in the vector
+x <- c(2.1, 4.2, 3.3, 5.4)
+```
+
+
+* **Positive integers** returns the elements at the specified positions in the vector, displaying the elements in the order in which they appear in the subsetting operator "[":
+
+```{r}
+# Reference
+x
+# Select fourth, second, and first elements, in that order
+x[c(4, 2, 1)]
+```
+
+The order() function returns a permutation which rearranges its first argument into ascending or descending order, breaking ties by further arguments; sort.list() does the same, using only one argument. 
+
+```{r}
+# Reference
+x
+# Generate order vector descending
+order(x, decreasing = TRUE)
+# Select fourth, second, third, and first elements, in that order
+x[order(x, decreasing = TRUE)]
+```
+
+Duplicate indices will duplicate values and real numbers as indices are silently truncated to integers:
+
+```{r}
+# Duplicate
+x[c(2, 2, 4, 4)]
+# Real numbers
+x[c(2.9, 2.2, 4.8, 4.7, 3.5)]
+# These doubles are coerced to integers before indexing
+as.integer(c(2.9, 2.2, 4.8, 4.7, 3.5))
+```
+
+* **Negative integers** exclude elements at the specified positions, leaving behind the unspecified elements in their original positions. We cannot mix positive and negative integers in a single subset:
+
+```{r}
+# Reference
+x
+# Exclude the fourth and second elements
+x[-c(1, 4)]
+```
+
+* **Logical vectors** select elements where the corresponding logical value is TRUE. We can select based on conditions.
+
+```{r}
+# Select the first and fourth elements
+x[c(TRUE, FALSE, FALSE, TRUE)]
+# Select randomly from x
+x[as.logical(x = sample(x = c(0, 1), size = 4, replace = TRUE))]
+# Select elements that are greater than 2
+x[x > 2]
+# Select first twice
+# Combining a double and logical values results in a double vector
+x[c(1, TRUE, 3, FALSE)]
+```
+
+In x[y], when x and y are different lengths, the recycling rules is applied; the shorter of the two is recycled to the length of the longer. 
+
+```{r}
+# Select first and third, since the TRUE FALSE combo is recycled
+x[c(TRUE, FALSE)]
+# Equivalent to
+x[c(TRUE, FALSE, TRUE, FALSE)]
+```
+
+An NA missing values in the index always returns a missing value in the output:
+
+```{r}
+x[c(TRUE, FALSE, NA, NA)]
+```
+
+* **Nothing** returns the original vector.
+
+```{r}
+x[]
+```
+
+* **Zero** returns a zero-length vector.
+
+```{r}
+# Zero
+x[0]
+# NULL
+x[NULL]
+```
+
+* If an atomic vector is named, we can select using **character vectors** to return elements with matching names (when subsetting with [, names are always matched exactly):
+
+```{r}
+# Create a new atomic vector
+y <- runif(n = 10, 5, 8)
+# Name
+y <- setNames(object = y, letters[3:12])
+# Attribute
+attributes(y)
+# Structure
+str(y)
+# Type
+typeof(y)
+# Reference
+y
+# Select f through j
+y[c("f", "g", "h", "i", "j")]
+# Like integer indices, you can repeat indices
+y[c("g", "g", "i")]
+```
+
+Factors are not treated specially, and so subsetting will use the underlying integer vector, not the character levels.
+
+```{r}
+rm(list = ls())
+```
+
+
+## Lists
+
+Lists work in the same way as subsetting an atomic vectors, using [ always returns a list.
+
+---
+
+## Matrices and arrays
+
+Three ways to subset higher-dimensional structures:
+
+* With multiple vectors
+* With a single vector
+* With a matrix
+
+1. The most common way of subsetting matrices and arrays is to supply a 1D index for each dimension, separated by a comma. Blank subsetting allows for keeping all rows, or all columns.
+
+```{r}
+# Create a 3 x 3 matrix
+matrix <- matrix(data = 1:9, nrow = 3)
+# Name the columns
+colnames(matrix) <- c("A", "B", "C")
+# Reference
+matrix
+# Select the first row of first two columns (Using multiple vectors)
+# One 1D index for each dimension (returns an integer vector)
+matrix[1, c(1, 2)]
+# Type
+typeof(matrix[1, c(1, 2)])
+```
+
+* Using positive integer vectors
+
+```{r}
+# Select all rows of column two (returns an integer vector)
+matrix[, 2]
+# Type
+typeof(matrix[, 2])
+```
+
+* Using negative integer vectors
+
+```{r}
+# Exclude first and third rows and keep all columns
+matrix[-c(1, 3), ]
+# Exclude third row and third column
+matrix[-3, -3]
+# Returns a matrix
+is.matrix(matrix[-3, -3])
+```
+
+
+* Using logical vectors and character vectors
+
+```{r}
+# Select first two rows from first and third columns
+matrix[c(TRUE, TRUE, FALSE), c("A", "C")]
+# Returns a matrix
+is.matrix(matrix[c(TRUE, TRUE, FALSE), c("A", "C")])
+```
+
+By default, matrix subsetting using [ simplifies the results to the lowest possible dimensionality. 
+
+2. Since matrices and arrays are vectors with special attributes, we can subset using a single vector as if they were a 1D vector. The outer() function computes the outer product of the arrays X and Y. The outer product of the arrays X and Y is the array A with dimension c(dim(X), dim(Y))
+
+```{r}
+# Create 5 x 5 Matrix
+vals <- outer(X = 1:5, Y = 1:5, FUN = "paste", sep = ",")
+# Dimension
+dim(vals)
+# Structure
+str(vals)
+# Attributes
+attributes(vals)
+# Reference
+vals
+```
+
+The matrix "vals" is essentially a 25-element vector with dim attributes. So we can subset using a single vector:
+
+```{r}
+# Reference
+as.vector(x = vals)
+# Length
+length(as.vector(x = vals))
+# Select the fourth element and the 24th element (returns a character vector)
+vals[c(4, 24)]
+is.character(vals[c(4, 24)])
+# Exclude elements 3, 4, and 10
+vals[-c(3, 4, 10)]
+is.character(vals[-c(3, 4, 10)])
+```
+
+3. Higher dimensional data structures can be subsetted by an integer matrix or character matrix. Each row in the index matrix specifies the location of one value (e.g. the i-jth element of an n x m matrix) and each column in the index matrix corresponds to a dimension in the array. That is, the number of columns in the index matrix must be =< the one less the number of columns in the higher dimensional data structures that needs to be subsetted. In our case, "vals" is a 3 x 3 matrix and so the index matrix must have $=< (3 - 1) = 2$ columns.
+
+```{r}
+# Create index matrix
+set.seed(5)
+index_matrix <- matrix(
+  data = as.integer(runif(n = 6, min = 1, max = 5)),
+  ncol = 2, byrow = TRUE
+)
+# Select the following elements
+# Row 1 and column 3
+# Row 4 and column 2
+# Row 1 and column 3
+index_matrix
+# Reference
+vals
+# Subset
+vals[index_matrix]
+```
+
+---
+
+## Data frames
+
+* When subsetting with a single index, data frames behave like lists and index the columns; so df[1:2] selects the first two columns.
+
+* When subsetting with two indices, data frames behave like matrices, so df[1:3, ] selects the first three rows and all columns. R recognizes dimensions in terms of rows and columns; that is, n x m means n rows and m columns.
+
+```{r}
+# Create data frame
+df <- data.frame(x = 1:3, y = 3:1, z = letters[1:3])
+# Row names
+row.names(df)
+# Show data frame
+df
+```
+
+1. Select rows using logical expression and integer vectors:
+
+```{r}
+# Select all rows where the value in column "x" is 2
+df[df$x == 2, ]
+# Select first and third rows and all columns
+df[c(1, 3), ]
+```
+
+2. Select columns like a list:
+
+```{r}
+# Select columns using character vector, in that order (single index)
+df[c("y", "x")]
+# Returns a list
+typeof(df[c("y", "x")])
+# Preserves data frame
+is.data.frame(df[c("y", "x")])
+# Exclude columns one and two
+df[-c(1, 2)]
+```
+
+3. Select columns like a matrix:
+
+```{r}
+# Select columns "y" and "x", in that order (double index)
+df[, c("y", "x")]
+# Returns a list
+typeof(df[, c("y", "x")])
+# Preserves data frame
+is.data.frame(df[, c("y", "x")])
+# Exclude columns "z and "y'
+df[, -c(2, 3)]
+# Does not preserve data frame
+is.data.frame(df[, -c(2, 3)])
+```
+
+There's an important difference if you select a single column: matrix subsetting simplifies by default, list subsetting does not.
+
+```{r}
+# List subsetting preserves data frame structure
+str(df["z"])
+# Matrix subsetting does not preserve data frame structure
+str(df[, "z"])
+```
+
+---
+
+## Tibbles
+
+Subsetting a tibble with [ always returns a tibble:
+
+```{r}
+# Create a tibble
+df <- tibble(x = 1:3, y = 3:1, z = letters[1:3])
+# List subsetting
+str(df["z"])
+# Matrix subsetting
+str(df[, "z"])
+```
+
+---
+
+### Preserving dimensionality
+
+By default, subsetting a matrix or data frame with a single number, a single name, or a logical vector containing a single TRUE, will simplify the returned output, i.e. it will return an object with lower dimensionality. 
+
+1. For matrices and arrays, any dimensions with length 1 will be dropped:
+
+```{r}
+# Select a single element in the matrix returns a 1D integer vector of length 1
+matrix[2, 3]
+# Structure
+is.integer(matrix[2, 3])
+# Length
+length(matrix[2, 3])
+# Dimensions (1 x 1 scalar so both dims get dropped)
+dim(matrix[2, 3])
+# Preserve dimensionality
+matrix[2, 3, drop = FALSE]
+# Now the dimensions are preserved
+dim(matrix[2, 3, drop = FALSE])
+```
+
+* Example 2:
+
+```{r}
+# Select columns 1 through 3 returns an 1D integer vector
+matrix[, 3]
+# Structure
+str(matrix[, 3])
+# Preserve dimensionality
+matrix[, 3, drop = FALSE]
+# Now the dimensions are preserved
+dim(matrix[, 3, drop = FALSE])
+```
+
+2. Data frames with a single column will return just that column:
+
+```{r}
+# Create data frame
+df <- data.frame(x = 1:3, y = 3:1, z = letters[1:3])
+# Select column x using double indices
+df[, "x"]
+# Structure
+str(df[, "x"])
+# Preserve dimensionality
+str(df[, "x", drop = FALSE])
+```
+
+---
+
+## Exercises
+
+### Exercise 1
+
+```{r}
+# Select all rows where the cyl column equals 4 (i.e. all 4 cylinder cars)
+mtcars[mtcars$cyl == 4, ]
+# Exclude columns 1 through 4
+mtcars[-c(1:4)]
+# Select all rows where the cyl column is <= 5
+mtcars[mtcars$cyl <= 5, ]
+# Select all rows where the cyl column equals 4 or 6
+mtcars[mtcars$cyl == 4 | mtcars$cyl == 6, ]
+# Another way is to use %in% like the IN command in SQL
+mtcars[mtcars$cyl %in% c(4, 6), ]
+```
+
+---
+
+### Exercise 2
+
+```{r}
+# Create integer vector
+x <- 1:5
+# Select NA
+x[NA]
+# Select NA_integer type
+x[NA_integer_]
+```
+
+In contrast to NA_real_ or NA_integer_, NA has logical type and logical vectors are recycled to the same length as the numeric vector x that is being subset, i.e. x[NA] is recycled to x[NA, NA, NA, NA, NA].
+
+---
+
+### Exercise 3
+
+The function upper.tri() returns a matrix of logical values the same size of a given matrix with entries TRUE in the lower or upper triangle.
+
+```{r}
+# Create a matrix
+x <- outer(X = 1:5, Y = 1:5, FUN = "*")
+x
+# Return a logical matrix
+upper.tri(x)
+# Return entries that are TRUE in the index (logical) matrix
+# That is, those that are above the diagonal
+x[upper.tri(x)]
+```
+
+When subsetting with logical matrices, all elements that correspond to TRUE will be selected. Matrices extend vectors with a dimension attribute, so the vector forms of subsetting can be used (including logical subsetting). We should take care, that the dimensions of the subsetting matrix match the object of interest — otherwise unintended selections due to vector recycling may occur. Please also note, that this form of subsetting returns a vector instead of a matrix, as the subsetting alters the dimensions of the object.
+
+---
+
+### Exercise 4
+
+The line mtcars[1:20] returns an error since the single index indicates the columns of the data frame, which behaves like a list. There are less than columns in the mtcars data set, and so the indexing is out-of-bounds. On the other hand,  the line mtcars[1:20, ] selects the first 20 rows and all columns from the data set. In this case the data frame is subsetted with two vectors, and so it behaves like a matrix.
+
+---
+
+### Exercise 5
+
+The function:
+```{r}
+# A function for extracting diagonal entries of a matrix
+extract_diag <- function(x) {
+
+  # Number of diagonal entries
+  n <- min(nrow(x), ncol(x))
+
+  # Index matrix
+  # Each row represents the i-jth entry
+  # In this case, it is (1,1), (2,2), ...
+  indices <- cbind(seq_len(n), seq_len(n))
+
+  # Extract corresponding entries
+  x[indices]
+}
+```
+
+Test:
+
+```{r}
+# Create a 4 x 4 matrix
+x <- matrix(data = runif(n = 14, min = 1, max = 202), ncol = 4)
+x
+# Extract diagonal entries
+extract_diag(x)
+```
+
+---
+
+### Exercise 6
+
+```{r}
+# Create data frame
+df <- data.frame(x = 1:4, y = c(2, NA, 4, 5), z = c("a", "b", "c", NA))
+df
+# Return missing values
+is.na(df)
+# Select missing values
+df[is.na(df)]
+# Replace NA with 0
+df[is.na(df)] <- 0
+df
+```
+
+This expression replaces the NAs in df with 0. Here is.na(df) returns a logical matrix that encodes the position of the missing values in df. Subsetting and assignment are then combined to replace only the missing values.

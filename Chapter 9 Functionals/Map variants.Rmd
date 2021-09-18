@@ -1,0 +1,451 @@
+---
+title: "Map variants"
+author: "Ken Wu"
+date: "7/26/2021"
+output:
+  bookdown::html_document2:
+    toc: true
+    toc_float: true
+    number_sections: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(collapse = TRUE)
+knitr::opts_chunk$set(comment = NA)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(fig.width = 6, fig.height = 4, fig.align = "center")
+library(tidyverse)
+library(Stat2Data)
+options(digits = 7)
+```
+
+## Map variants table
+
+There are 23 primary variants of `map()`. 
+
+* Output same type as input with modify().
+* Iterate over two inputs with map2().
+* Iterate with an index using imap()
+* Return nothing with walk().
+* Iterate over any number of inputs with pmap().
+
+The map family of functions has orthogonal input and outputs, meaning that we can organize all the family into a matrix, with \textcolor{blue}{inputs in the rows} and \textcolor{red}{outputs in the columns}.^[In linear algebra, an **orthogonal matrix**, or orthonormal matrix, is a real square matrix whose columns and rows are **orthonormal** vectors. A set of vectors form an **orthonormal set** if all vectors in the set are mutually orthogonal and all of unit length.] 
+
+\begin{center}
+\begin{tabular}{lcccc}
+ & \textbf{\textcolor{red}{List}} & \textbf{\textcolor{red}{Atomic}} & \textbf{\textcolor{red}{Same Type}} & \textbf{\textcolor{red}{Nothing}} \\
+\hline \textbf{\textcolor{blue}{One argument}} & $\mathbf{map()}$ & $\mathbf{map\_lgl()}$, ... & $\mathbf{modify()}$ & $\mathbf{walk()}$ \\
+\hline \textbf{\textcolor{blue}{Two arguments}} & $\mathbf{map2()}$ & $\mathbf{map2\_lgl()}$, ... & $\mathbf{modify2()}$ & $\mathbf{walk2()}$ \\
+\hline \textbf{\textcolor{blue}{One argument + Index}} & $\mathbf{imap()}$ & $\mathbf{imap\_lgl()}$, ... & $\mathbf{imodify()}$ & $\mathbf{iwalk()}$ \\
+\hline \textbf{\textcolor{blue}{N arguments}} & $\mathbf{pmap()}$ & $\mathbf{pmap\_lgl()}$, ... & --- & $\mathbf{pwalk()}$
+\end{tabular}
+\end{center}
+
+---
+
+## The modify() family
+
+The `modify()` family always returns the same type as the input object:
+
+* `modify(.x, .f, ...)` is a shortcut for `x[[i]] <- f(x[[i]]); return(x)`.
+
+* `modify_if(.x, .p, .f, ..., .else = NULL)` only modifies the elements of x that satisfy a predicate and leaves the others unchanged. The argument ".else" accepts a function to be applied to elements of .x for which .p returns FALSE. 
+
+* `modify_at(.x, .at, .f, ...)` only modifies elements given by names or positions. The argument ".at" accepts a character vector of names, positive numeric vector of positions to include, or a negative numeric vector of positions to exclude. Only those elements corresponding to .at will be modified. If the tidyselect package is installed, you can use vars() and the tidyselect helpers to select elements.
+
+* `modify2(.x, .at, .f, ...)` modifies the elements of .x but also passes the elements of .y to .f, just like `map2()`. 
+
+* `imodify(.x, .f, ...)` passes the names or the indices to .f like `imap()` does.
+
+* `modify_depth(.x, .depth, .f, ..., .ragged = .depth < 0)` only modifies elements at a given level of a nested data structure.
+
+* `modify_in(.)` modifies a single element in a `pluck()` location.
+
+---
+
+### The basic implementation
+
+The basic implementation of `modify()` is simple, because we don’t need to create a new output vector; we progressively replace the input. (The real code is a little complex to handle edge cases more gracefully.)
+
+```{r}
+simple_modify <- function(x, f, ...) {
+  for (i in seq_along(x)) {
+    # Apply function f to each element of x and modify on copy
+    x[[i]] <- f(x[[i]], ...)
+  }
+}
+```
+
+---
+
+## Two inputs: map2() and others
+
+The function `map2(.x, .y, .f, ...)` iterates over multiple arguments simultaneously. It is vectorized over two arguments, .x and .y; in other words, both .x and .y are varied in each call of ".f": 
+
+* `map2_lgl(.x, .y, .f, ...)`
+
+* `map2_int(.x, .y, .f, ...)`
+
+* `map2_dbl(.x, .y, .f, ...)`
+
+* `map2_chr(.x, .y, .f, ...)`
+
+* `map2_raw(.x, .y, .f, ...)`
+
+* `map2_dfr(.x, .y, .f, ..., .id = NULL)`
+
+* `map2_dfc(.x, .y, .f, ...)`
+
+---
+
+### Graphically
+
+```{r, out.height="30%", out.width="30%"}
+# Import image
+knitr::include_graphics("Diagrams/map2.png")
+```
+
+---
+
+### Example map2()
+
+```{r}
+# List of 8 sets of 10 uniformly distributed random variables per set
+xs <- map(.x = 1:8, .f = ~ runif(n = 10))
+str(xs)
+# List of 8 sets of weights (same length as each xs[[i]]) to be used for each xs[[i]]
+w <- map(.x = 1:8, .f = ~ rpois(n = 10, lambda = 5) + 1)
+str(w)
+# Check arguments
+args(name = weighted.mean)
+# Iterate over xs and w
+map2_dbl(.x = xs, .y = w, .f = weighted.mean)
+```
+
+The above code is equivalent to running `weighted.mean(x = xs[[i]], w = w[[i]])` for $i=1,...,8$. Additional arguments are still passed on to `map2()` via ...:
+
+```{r}
+# Set the seventh element of the vector in the second element of the list to NA
+xs[[2]][[7]] <- NA_real_
+# Pass additional argument to map2
+map2_dbl(.x = xs, .y = w, .f = weighted.mean, na.rm = FALSE)
+map2_dbl(.x = xs, .y = w, .f = weighted.mean, na.rm = TRUE)
+```
+
+```{r, out.height="30%", out.width="30%"}
+# Import image
+knitr::include_graphics("Diagrams/map2_additional_args.png")
+```
+
+---
+
+### The basic implementation
+
+```{r}
+simple_map2 <- function(x, y, f, ...) {
+  # Pre-allocate container
+  out <- vector("list", length(x))
+  for (i in seq_along(x)) {
+    # x[[i]] and y[[i]] are treated as first and second arguments to .f
+    out[[i]] <- f(x[[i]], y[[i]], ...)
+  }
+  out
+}
+```
+
+The one subtlety between the simple code above and the real `map2()` is that **`map2()` recycles its inputs to .x and .y to make sure that they are the same length:
+
+```{r, out.height="30%", out.width="30%"}
+# Import image
+knitr::include_graphics("Diagrams/map2_recycle.png")
+```
+
+Here, the blue boxes are recycled to match the length of orange. In other words, `map2(.x, .y, .f, ...)` will behave like `map(.x, .f, ...)` when needed. The base R equivalent to `map2()` is `Map()`.
+
+---
+
+## No output: walk() and others
+
+A visual depiction of of `walk(.x, .f, ...)`:
+
+```{r, out.height="30%", out.width="30%"}
+# Import image
+knitr::include_graphics("Diagrams/walk.png")
+```
+
+The outputs of `walk()` are ephemeral; the input(s) is returned **invisibly**.
+
+### Example walk2()
+
+A useful case of `walk2(.x, .y, .f, ...)` is saving something to disk, which usually involves a pair of values: the object and the path to save it to.
+
+```{r, out.height="30%", out.width="30%"}
+# Import image
+knitr::include_graphics("Diagrams/walk2.png")
+```
+
+There is a list of data frames; we wish to save each element to a separate CSV file (Note: The function `file.path(..., fsep = .Platform$file.sep)` constructs the path to a file from components in a platform-independent way):
+
+```{r, eval=FALSE}
+# Split data
+cyl <- split(x = mtcars, f = mtcars[["cyl"]])
+# Create a list of paths
+# The function paste0() has no sep = ""
+paths <- file.path(getwd(), paste0("cyl-", sep = names(cyl), ".csv"))
+paths
+typeof(paths)
+# The function write.csv takes two required arguments "x" and "file"
+args(name = write.table)
+# Save using walk2() to iterate over elements of cyl (data frame) and paths
+walk2(.x = cyl, .y = paths, .f = write.csv)
+# Check files in working director
+dir()
+```
+
+---
+
+## Iterating over values and indices
+
+Three main ways to loop over a vector with a for loop:
+
+* Loop over the elements: `for (x in xs)`
+* Loop over the numeric indices: `for (i in seq_along(xs))`
+* Loop over the names: `for (nm in names(xs))`
+
+The first form is analogous to the `map()` family. The second and third forms are equivalent to the`imap()` family which allows **you to iterate over the values and the indices of a vector in parallel.**
+
+---
+
+### imap()
+
+The function `imap(x, .f, ...)` is like `map2(.x, .y, .f, ...)` in the sense that ".f" gets called with two arguments, but here arguments are derived from the vector ".x". The function `imap(x, .f, ...)` is equivalent to `map2(.x = x, .y = names(x), .f = f)` if "x" has names, and `map2(.x = x, .y = seq_along(x), .f = f)` if it does not. The function `imap(x, .f, ...)` is often useful for constructing labels:
+
+```{r}
+# Determine indices of the numeric variables
+numeric_indices <- purrr::map_lgl(.x = iris, .f = is.numeric)
+# Construct labels
+# Make note of the spaces inside "" of paste0()
+imap_chr(
+  .x = iris[numeric_indices],
+  .f = ~ paste0("The mean of ", sep = .y, " is ", round(mean(.x), digits = 4))
+)
+```
+
+Here, `imap(x, .f, ...)` is equivalent to `map2(.x = x, .y = names(x), .f = f)` as:
+
+* Each call is essentially `paste0("The mean of ", sep = names(iris)[[i]], " is ", round(mean(iris[[i]]), digits = 4))`
+* .x = iris is a data frame, and sub-setting by iris[[i]] returns a numeric vector
+* .y = names(iris) a character vector, and sub-setting by names(iris)[[i]] returns variables names that are character vectors of length 1 
+
+---
+
+If the vector ".x" is unnamed, the second argument will be the index:
+
+```{r}
+# Take 6 indep. samples, each containing 10 random numbers drawn from 1 to 1000
+x <- map(.x = 1:6, .f = ~ sample(x = 1:1000, size = 10))
+x
+# Construct labels
+imap_chr(
+  .x = x,
+  .f = ~ paste0("The sd of sample ", sep = .y, " is ", round(sd(.x), digits = 4))
+)
+```
+
+Here, `imap(x, .f, ...)` is equivalent to `map2(.x = x, .y = seq_along(x), .f = f)` as:
+
+* Each call is essentially `paste0("The sd of sample ", sep = seq_along(x)[[1]], " is ", round(sd(x[[1]]), digits = 4))`
+* .x = x is a list, and sub-setting by x[[i]] returns a numeric vector of length 10
+* .y = seq_along(x) is an integer vector, and sub-setting by seq_along(x)[[i]] returns the indices of the samples from 1 to 6
+
+---
+
+## Any number of inputs: pmap() and others
+
+The function `pmap(.l, .f, ...)` is used when the function ".f" has more than 2 arguments. Compared to other map functions, `pmap(.l, .f, ...)`takes in a list of vectors, such as a data frame, as input. The length of ".l" determines the number of arguments that ".f" will be called with. Therefore, list names will be used for argument matching if present. It is always a good practice to name the list elements for the purpose of making it clear what arguments the function calls take.
+
+---
+
+### Graphically
+
+```{r, out.height="30%", out.width="30%"}
+# Import image
+knitr::include_graphics("Diagrams/pmap.png")
+```
+
+---
+
+
+### Example: Draw random normal samples with varying parameters
+
+* Check argument names:
+
+```{r}
+# Number of arguments (more than 2)
+args(name = rnorm)
+```
+
+* There are two ways to create a data frame for ".l": 
+
+  + Use `list()`:
+  
+```{r}
+# Create parameters that vary
+parameters <- list(
+  n = c(10, 30, 100, 500),
+  mean = c(10, 50, 75, 250),
+  sd = c(5, 25, 40, 175)
+)
+```
+
+  + Use `tibble::tribble()` for row-wise tibble creation:
+  
+```{r}
+# Create parameters that vary
+tribble(
+  ~n, ~mean, ~sd,
+  10, 10, 5,
+  30, 50, 25,
+  100, 75, 40,
+  500, 250, 175
+)
+```
+* Generate four sets of random normal samples with varying parameters:
+
+```{r}
+str(pmap(.l = parameters, .f = rnorm))
+```
+
+The `pmap()` above is equivalent to:
+
+* `rnorm(n = parameters[[1]][[1]], mean = parameters[[2]][[1]], sd = parameters[[3]][[1]])`
+* `rnorm(n = parameters[[1]][[2]], mean = parameters[[2]][[2]], sd = parameters[[3]][[2]])`
+* `rnorm(n = parameters[[1]][[3]], mean = parameters[[2]][[3]], sd = parameters[[3]][[3]])` 
+* `rnorm(n = parameters[[1]][[4]], mean = parameters[[2]][[4]], sd = parameters[[3]][[4]])`
+
+---
+
+## Exercises
+
+### Exercise 1
+
+Explain the results of `modify(mtcars, 1)`:
+
+```{r}
+modify(.x = mtcars, .f = 2)
+```
+
+The function `modify(.x = mtcars, .f = 2)` takes advantage of the extracting shortcut powered `pluck()`. Each call is equivalent to `pluck(.x = mtcars[[i]], 2)`; that is, extract the second element from each numeric variables from the `mtcars` data set. In addition, since `modify(.x, .f, ...)` always returns the same type of output as the input (modifies-on-copy), the results is a data frame with the same dimensions as the original data. **It forces the one row to be recycled 32 times**:
+
+```{r}
+# Original
+dim(x = mtcars)
+# New
+dim(x = modify(.x = mtcars, .f = 2))
+```
+
+The `map(.x, .f, ...)` function would have returned just **a named numeric vector containing the second elements of all the variables in `mtcars`**:
+
+```{r}
+map_dbl(.x = mtcars, .f = 2)
+```
+
+---
+
+### Exercise 2
+
+Rewrite the following code to use `iwalk()` instead of `walk2()`. What are the advantages and disadvantages?
+
+```{r, eval=FALSE}
+# Spit data
+cyls <- split(x = mtcars, f = mtcars$cyl)
+# Paths
+paths <- file.path(getwd(), paste0("cyl-", sep = names(cyls), ".csv"))
+# Write
+walk2(.x = cyls, .y = paths, .f = write.csv)
+```
+
+Re-write as:
+
+```{r}
+mtcars %>%
+  split(f = mtcars$cyl) %>%
+  # Store the output paths in the names
+  set_names(nm = ~ file.path(getwd(), paste0("cyl-", .x, ".csv"))) %>%
+  iwalk(.f = ~ write.csv(.x, .y))
+```
+
+---
+
+### Exercise 3
+
+Explain how the following code transforms a data frame using functions stored in a list:
+
+* First, we see from `?mtcars` that the variables "disp" has units (cu.in.) and "am" is a categorical variable (0 = automatic, 1 = manual)
+ 
+```{r}
+# A list of functions
+trans <- list(
+  # Function that multiplies an input by a factor of 0.0164
+  # That is, this converts the displacement variable from cu.in to liters
+  disp = function(x) x * 0.0163871,
+  # Function that factorizes the am variable based on whether the car is manual or auto transmission
+  am = function(x) factor(x, labels = c("auto", "manual"))
+)
+# Character index to be used to subset the data frames by variable name
+nm <- names(trans)
+# Transform the mtcars data set
+mtcars[nm] <- map2(
+  .x = trans,
+  .y = mtcars[nm],
+  .f = function(f, var) f(var)
+)
+```
+
+* The elements of "x. = trans" are functions, so **trans[[1]]** is `disp(x)` and **trans[[2]]** is`am(x)`
+
+```{r}
+trans[[1]]
+typeof(trans[[1]])
+trans[[2]]
+typeof(trans[[2]])
+```
+
+* The elements of ".y = mtcars[nm]" are double vectors, so **mtcars[nm][[1]]** is the numerical vector disp in their original units and **mtcars[nm][[2]]** are 0s and 1s indicating the type of transmission
+
+```{r}
+mtcars[nm][[1]]
+typeof(mtcars[nm][[1]])
+mtcars[nm][[2]]
+typeof(mtcars[nm][[2]])
+```
+
+* The function .f is equivalent to `function(.x, .y) .x(.y)`; for clarity, Hadley opts to substitute "f" for .x and "car" for .y. 
+
+* The two calls are essentially `disp(x = mtcars[nm][[1]])` and `am(x = mtcars[nm][[2]])`
+
+---
+
+Compare and contrast the `map2()` approach to this `map()` approach:
+
+```{r}
+# Modifies two variables by replacing old values with a list on the RHS of <-
+mtcars[nm] <- map(.x = nm, .f = ~ trans[[.x]](mtcars[[.x]]))
+```
+
+Besides the iteration pattern, the approaches differ in the possibilities for appropriate argument naming in the .f argument. In the map2() approach we iterate over the elements of x and y. Therefore, it is possible to choose appropriate placeholders like f and var. This makes the anonymous function more expressive at the cost of making it longer. We think using the formula interface in this way is preferable compared to the rather cryptic `mtcars[nm] <- map2(.x = trans, .y = mtcars[nm], .f = ~ .x(.y))`.
+
+In the map() approach we map over the variable names. It is therefore not possible to introduce placeholders for the function and variable names. The formula syntax together with the .x pronoun is pretty compact. The object names and the brackets clearly indicate the application of transformations to specific columns of mtcars. In this case the iteration over the variable names comes in handy, as it highlights the importance of matching between trans and mtcars element names. Together with the replacement form on the left-hand side, this line is relatively easy to inspect.
+
+To summarize, in situations where map() and map2() provide solutions for an iteration problem, several points may be considered before deciding for one or the other approach.
+
+---
+
+### Exercise 4
+
+What does `write.csv()` return, i.e. what happens if you use it with `map2()` instead of `walk2()`?
+
+The function `write.csv()` returns NULL. As we call the function for its side effect (creating a CSV file), `walk2()` would be appropriate here. Otherwise, we receive a rather uninformative list of NULLs.
+  

@@ -1,0 +1,319 @@
+---
+title: "Recursing Over Environments"
+author: "Ken Wu"
+date: "8/24/2021"
+output:
+  bookdown::html_document2:
+    toc: true
+    toc_float: true
+    number_sections: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(comment = NA)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(fig.width = 6, fig.height = 4, fig.align = "center")
+library(tidyverse)
+library(rlang)
+options(digits = 4)
+```
+
+# Recursing over environments {#recursing}
+
+It is natural to work with environments recursively:
+
+```{r, eval=FALSE}
+f <- function(..., env = rlang::caller_env()) {
+  if (identical(env, rlang::empty_env())) {
+    # Base case or stop when this case is reached
+  } else if (success) {
+    # Success case
+  } else {
+    # Recursive case
+    # Call this function recursively now with the parent environment of the current environment
+    f(..., env = rlang::env_parent(env))
+  }
+}
+```
+
+---
+
+This function can be written to find the environment `where()` a binding, or name is defined starting with the `rlang::caller_env()`:
+
+```{r}
+where <- function(name, env = rlang::caller_env()) {
+  # If the env is the empty environment
+  if (identical(env, rlang::empty_env())) {
+    # Base case or stop case
+    base::stop("Can't find ", name, call. = FALSE)
+    # If the name/binding exists in this environment, return this environment
+  } else if (rlang::env_has(env, name)) {
+    # Success case
+    env
+  } else {
+    # If "name" is not found in the current environment, call this function but now check the parent
+    # Recursive case
+    where(name, rlang::env_parent(env))
+  }
+}
+```
+
+* The function `base::stop(..., call. = TRUE, domain = NULL)` has the argument "call.", which is a logical indicating if the call should become part of the error message.
+
+---
+
+The function `where()` has three cases:
+
+* The base case: we’ve reached the empty environment and haven’t found the binding. We can’t go any further, so we throw an error.
+
+* The successful case: the name exists in this environment, so we return the environment.
+
+* The recursive case: the name was not found in this environment, so try the parent.
+
+```{r, eval=FALSE}
+# This should throw an error since the name is not defined at all
+where(name = "ken", env = rlang::caller_env())
+```
+```{r}
+# This should return the global environment
+x <- "ken"
+where(name = "x", env = rlang::caller_env())
+# This should return the ggplot2 package as the binding for ggplot() is in the package
+where(name = "ggplot", env = rlang::caller_env())
+```
+
+---
+
+Let us see another example that is a bit more complex: 
+
+```{r}
+# Define a new environment whose parent is the global environment
+# This env has two bindings
+e1 <- rlang::env(rlang::global_env(), x = 3, ken = "gets a job")
+# Check that its parent is indeed the global env
+rlang::env_parent(env = e1)
+# Create another new env whose parent is e1 with two bindings
+e2 <- rlang::env(e1, I = "need a job", x = sample(x = 1:23, size = 10, replace = TRUE))
+# Address of e1
+e1
+# Check that e2's parent is indeed e1
+rlang::env_parent(env = e2)
+```
+
+Now we will use `where()` to search for bindings:
+
+```{r}
+# The addresses of e1 and e2
+e1
+e2
+# Search for the object ken starting with e2
+where(name = "ken", env = e2)
+```
+
+Note that `where(name = "ken", env = e2)` does not find `ken` in `e2` and so it looks in its parent, `e1`, and finds it there.
+
+```{r}
+# Create a binding in the global env
+job <- "can't be found"
+# Search for object job starting with e2
+where(name = "job", env = e2)
+```
+
+Here, `where(name = "job", env = e2)` does not find `job` in `e2` and so it looks in its parent, `e1`. It does not find `job` in `e1` and so it scopes for it in the parent, which is the global environment and finds it there. If we try to scope for a binding that does not exist at all, (including in all the packages currently loaded), then the function will throw an error.
+
+---
+
+# Iteratioin versus recursion
+
+It is possible to re-write the recursive function from section \@ref(recursing) as a while loop:
+
+```{r, eval=FALSE}
+f2 <- function(..., env = rlang::caller_env()) {
+  # If identical() evaluates to false, i.e., not the empty env, then execute the following
+  # The ! negates false to true to ensure the while loop executes
+  while (!identical(x = env, rlang::empty_env())) {
+    # Now evaluate if the case is a success, and if so, return the env
+    if (success) {
+      base::return()
+    }
+    # If not the success case, then modify to search the parent
+    env <- env_parent(env)
+  }
+
+  # Base base or stop case
+  # The is reached when the while condition evaluates to false, i.e., is the empty env,
+  # Still no success case so throw an error
+  rlang::stop(..., call. = FALSE)
+}
+```
+
+---
+
+# Exercises 
+
+## Exercise 1
+
+Modify `where()` to return all environments that contain a binding for name. Carefully think through what type of object the function will need to return:
+
+```{r}
+# The pre-allocated list container for all env's where "name" is found is initialized via default arg
+where2 <- function(name, env = rlang::caller_env(), container = vector(mode = "list")) {
+
+  # If the env is the empty environment
+  if (identical(env, rlang::empty_env())) {
+
+    # Just return the empty list since no env contains the binding "name"
+    container
+    # If the name/binding exists in this environment, store this env in the list container
+  } else if (rlang::env_has(env, name)) {
+
+    # The use of c() combines several lists into one list (see chapter 3 on list/atomic vectors)
+    container <- c(container, env)
+    # Continue searching its ancestors
+    # Note we need to now specify the updated container by overriding the default arg
+    where2(name, rlang::env_parent(env), container = container)
+  } else {
+
+    # If "name" is not found in the current environment, call this function but now check the parent
+    # Again, override the default arg using the same empty container
+    # We do not wish to re-initialize the empty container each time the function is called
+    where2(name, rlang::env_parent(env), container = container)
+  }
+}
+```
+
+Let us see it in action:
+
+```{r}
+# The binding "x" exists in all three env's--- e1, e2, and global
+rlang::env_names(e1)
+rlang::env_names(e2)
+rlang::env_names(rlang::global_env())
+# Now the function where should return a single list containing e1, e2, and global
+where2(name = "x", env = e2)
+# Let us check the addresses
+e1
+e2
+```
+
+---
+
+This is the textbook's solution:
+
+```{r,eval=FALSE}
+where2 <- function(name, env = caller_env(), results = list()) {
+  if (identical(env, empty_env())) {
+    # Base case
+    results
+  } else {
+    # Recursive case
+    if (env_has(env, name)) {
+      results <- c(results, env)
+    }
+    where2(name, env_parent(env), results)
+  }
+}
+```
+
+
+---
+
+## Exercise 2
+
+Write a function called `fget()` that finds only function objects. It should have two arguments, `name` and `env`, and should obey the regular scoping rules for functions: if there’s an object with a matching name that’s not a function, look in the parent. For an added challenge, also add an `inherits` argument which controls whether the function recurses up the parents or only looks in one environment:
+
+```{r}
+fget <- function(name, env = rlang::caller_env(), inherits) {
+
+  # If we do not need to check parents
+  if (inherits == FALSE) {
+    # Check if the empty env is reached
+    if (identical(x = env, y = rlang::empty_env())) {
+      stop("Cannot find function object", call. = FALSE)
+      # If binding exists AND is a function, extract it
+    } else if (rlang::env_has(env, nms = name)) {
+      obj <- rlang::env_get(env = env, nm = name)
+
+      # If the object is a function, return it, if not, do nothing
+      if (rlang::is_function(obj)) {
+        return(obj)
+      }
+      # If not found in current env, stop and throw an error
+    } else {
+      stop("Cannot find function object", call. = FALSE)
+    }
+  }
+
+  if (inherits == TRUE) {
+    # Check if the empty env is reached
+    if (identical(x = env, y = rlang::empty_env())) {
+      stop("Cannot find function object", call. = FALSE)
+      # If binding exists AND is a function, extract it
+    } else if (rlang::env_has(env, nms = name)) {
+      obj <- rlang::env_get(env = env, nm = name)
+
+      # If the object is a function, return it, if not, do nothing
+      if (rlang::is_function(obj)) {
+        return(obj)
+      }
+      # If not found, check parent
+    } else {
+      fget(name, env = rlang::env_parent(env), inherits = inherits)
+    }
+  }
+}
+```
+
+Let us see it in action:
+
+```{r}
+fget(name = "ggplot", env = e2, inherits = TRUE)
+fget(name = "sum", env = e2, inherits = TRUE)
+fget(name = "where", env = rlang::global_env(), inherits = FALSE)
+```
+
+---
+
+Here is the textbook's solution:
+
+```{r}
+fget_text <- function(name, env = caller_env(), inherits = TRUE) {
+
+  # If the binding exists, store it as an object
+  if (env_has(env, name)) {
+    obj <- env_get(env, name)
+
+    # If the object is a function object, then return it
+    if (is.function(obj)) {
+      return(obj)
+    }
+  }
+
+  # If empty env is reached OR inherits == FALSE, throw an error that no function is found
+  if (identical(env, emptyenv()) || !inherits) {
+    stop("Could not find a function called \"", name, "\".",
+      call. = FALSE
+    )
+  }
+
+  # If env_has(env, name) evaluate to FALSE and (identical(env, emptyenv()) || !inherits) == FALSE
+  # Keep searching for the function object thru parents
+  fget_text(name, env_parent(env))
+}
+```
+
+Let us see this function in action:
+
+```{r}
+fget_text(name = "ggplot", env = e2, inherits = TRUE)
+fget_text(name = "sum", env = e2, inherits = TRUE)
+```
+
+---
+
+```{r}
+# Unbind all in global
+rlang::env_unbind(env = rlang::global_env(), nms = base::names(rlang::global_env()))
+```

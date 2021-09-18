@@ -1,0 +1,289 @@
+---
+title: "Choices"
+author: "Ken Wu"
+date: "6/24/2021"
+output:
+  bookdown::html_document2:
+    toc: true
+    toc_float: true
+    number_sections: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(collapse = TRUE)
+knitr::opts_chunk$set(comment = NA)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(fig.width = 5, fig.height = 3, fig.align = "center")
+library(tidyverse)
+```
+
+## if statement
+
+Basic syntax of an if statement in R:
+
+```{r, eval=FALSE}
+# Single argument
+if (condition) true_action
+# Optional else statement
+if (condition) true_action else false_action
+```
+
+If condition is TRUE, true_action is evaluated; if condition is FALSE, the optional false_action is evaluated.
+
+```{r}
+# Grade
+grade <- function(x) {
+  if (x >= 90) {
+    "A"
+  } else if (x >= 80) {
+    "B"
+  } else if (x >= 50) {
+    "C"
+  } else {
+    "F"
+  }
+}
+# Test
+grade(x = 50)
+grade(x = 90)
+grade(x = 81)
+```
+
+* When using a single argument form without the else statement, if *invisibly* returns NULL if the condition is FALSE. Embrace the function with () to see the NULL value.
+
+```{r}
+# No else statement
+grade_new <- function(x) {
+  if (x >= 90) {
+    "A"
+  } else if (x >= 80) {
+    "B"
+  } else if (x >= 50) {
+    "C"
+  } 
+}
+# Test
+(grade_new(x = 34))
+```
+
+* The condition should evaluate to a *single* TRUE or FALSE. 
+
+---
+
+## Vectorized if
+
+* **ifelse(test = an object which can be coerced to logical mode, yes = return values for true elements of test, no = return values for false elements of test)** from base R
+
+The function ifelse() returns a value with the same shape as test which is filled with elements selected from either yes or no depending on whether the element of test is TRUE or FALSE.
+
+* **if_else(condition, true, false, missing = NULL)** from dpylr 
+
+Compared to the base ifelse(), this function is more strict. It checks that true and false are the same type. This strictness makes the output type more predictable, and makes it somewhat faster.
+
+```{r}
+# Vector
+x <- c(1:10, NA_real_, NA_real_)
+x
+# Vector of remainders
+x %% 5
+# Logical vector of whether each remainder is zero
+x %% 5 == 0
+# Integer equivalent to the logical vector above
+which(x = (x %% 5 == 0))
+# Vectorize if
+ifelse(test = (x %% 5 == 0), yes = "XXX", no = "No")
+# Using dpylr's function
+if_else(condition = (x %% 2 == 0), true = "even", false = "odd", missing = "Missing")
+```
+
+---
+
+* The case_when() function allows you to vectorize multiple if_else() statements. It is an R equivalent of the SQL CASE WHEN statement. If no cases match, NA is returned. Use TRUE ~ to handle the ELSE group.
+
+* Note that NA values in the vector x do not get special treatment. If you want
+to explicitly handle NA values you can use the `is.na` function:
+
+```{r}
+dplyr::case_when(
+  x %% 35 == 0 ~ "fizz buzz",
+  x %% 5 == 0 ~ "fizz",
+  x %% 7 == 0 ~ "buzz",
+  is.na(x) ~ "???",
+  TRUE ~ "other"
+)
+```
+
+---
+
+## switch() statement
+
+* Example 1: We can replace:
+
+```{r}
+# Function
+x_option <- function(x) {
+  if (x == "a") {
+    "option 1"
+  } else if (x == "b") {
+    "option 2"
+  } else if (x == "c") {
+    "option 3"
+  } else {
+    stop("Invalid `x` value")
+  }
+}
+# Test
+x_option("a")
+x_option("c")
+```
+
+with a more succinct:
+
+```{r}
+# Succinct function
+x_option_succinct <- function(x) {
+  switch(x,
+    a = "option 1",
+    b = "option 2",
+    c = "option 3",
+    stop("Invalid `x` value")
+  )
+}
+# Test
+x_option_succinct("b")
+```
+
+The last component of a switch() should always throw an error, otherwise unmatched inputs will invisibly return NULL:
+
+```{r}
+(switch("c",
+  a = 1,
+  b = 2
+))
+```
+
+---
+
+* Example 2
+
+```{r}
+# Function
+centre <- function(x, type) {
+  switch(type,
+    mean = mean(x),
+    median = median(x),
+    trimmed = mean(x, trim = .1),
+    max = max(x),
+    sd = sd(x),
+    IQR = IQR(x),
+    stop("Invalid input")
+  )
+}
+# Test
+x <- rcauchy(n = 10)
+centre(x, type = "mean")
+centre(x, type = "median")
+centre(x, type = "trimmed")
+centre(x, type = "sd")
+centre(x, type = "max")
+```
+
+---
+
+* Example 3: If multiple inputs have the same output, you can leave the right hand side of = empty and the input will “fall through” to the next value. 
+
+```{r}
+# Function
+legs <- function(x) {
+  switch(x,
+    cow = ,
+    horse = ,
+    dog = 4,
+    human = ,
+    chicken = 2,
+    plant = 0,
+    stop("Unknown input")
+  )
+}
+# Test
+legs("plant")
+legs("human")
+legs("horse")
+legs("dog")
+legs("cow")
+```
+
+---
+
+## Exercises
+
+### Exercise 1
+
+* Example 1: character and integer results in character
+
+```{r}
+# Yes has numeric type and no has character type
+ifelse(test = c(TRUE, FALSE), yes = 1, no = "no")
+# Returns a character vector
+str(ifelse(test = c(TRUE, FALSE), yes = 1, no = "no"))
+```
+
+* Example 2
+
+```{r}
+# Test condition is a logical NA
+ifelse(test = NA, yes = 1, no = "no")
+# Returns a logical NA
+typeof(ifelse(test = NA, yes = 1, no = "no"))
+str(ifelse(test = NA, yes = 1, no = "no"))
+```
+
+* Example 3: integer and double results in double
+
+```{r}
+# Yes has integer type and no has double type
+ifelse(test = c(TRUE, FALSE), yes = as.integer(x = 4), no = as.double(x = 2.2))
+# Returns a double vector
+typeof(ifelse(test = c(TRUE, FALSE), yes = as.integer(x = 4), no = as.double(x = 2.2)))
+```
+
+* Example 4: integer and logical results in integer
+
+```{r}
+# Yes has integer type and no has logical type
+ifelse(test = c(TRUE, FALSE), yes = TRUE, no = as.integer(x = 4))
+# Returns an integer vector
+str(ifelse(test = c(TRUE, FALSE), yes = TRUE, no = as.integer(x = 4)))
+```
+
+When "yes" and "no" are not the same type, the coercion type fixed order is used: character $\rightarrow$ double $\rightarrow$ integer $\rightarrow$ logical. Then, the type of the resulting vector will be coerced from logical to any other type depending on whether test is TRUE or FALSE. It will be coerced from logical to accommodate first any values taken from yes and then any values taken from no.
+
+---
+
+### Exercise 2
+
+The condition argument in the if statement requires a  length-one logical vector that is not NA. *Other types are coerced to logical if possible, ignoring any class*. Therefore, if also accepts a numeric vector where 0 is treated as FALSE and all other numbers are treated as TRUE.
+
+```{r}
+# This function below results in a length one integer vector 10
+length(x = 1:10)
+# Structure
+str(length(x = 1:10))
+# Since 10 is a non-zero it is treated as TRUE when converting to a logical vector
+as.logical(length(x = 1:10))
+# If statement should return "no empty" because length(x = 1:10) evaluates to TRUE
+if (length(x = 1:10)) "not empty" else "empty"
+# Coercion of a length on vector 0
+as.logical(length(numeric(0)))
+# If statement evaluates to 0 and so FALSE action is carried out
+if (length(numeric(0))) "not empty" else "empty"
+```
+
+---
+
+```{r}
+rm(list = ls())
+```
+

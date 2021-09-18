@@ -1,0 +1,158 @@
+---
+title: "Call Stacks"
+author: "Ken Wu"
+date: "8/29/2021"
+output:
+  bookdown::html_document2:
+    toc: true
+    toc_float: true
+    number_sections: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(comment = NA)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(fig.width = 6, fig.height = 4, fig.align = "center")
+library(rlang)
+options(digits = 4)
+```
+
+# Call stacks
+
+The caller environment can be accessed with `rlang::caller_env()`, and this provides the environment from which the function was called. The base R equivalent is `base::parent.frame()`. Whenever a function is executed, two types of context are created:
+
+1. The execution environment--- the child of the function environment, which is determined by where the function was created.
+
+2. The call stacks, which is made up of **frames** and is created by where the function was called.
+
+## Simple call stacks
+
+See the following sequence of calls--- `f()` calls `g()` calls `h()`:
+
+```{r}
+# Function f()  calls g()
+f <- function(x) {
+  g(x = 2)
+}
+# Function g() calls h()
+g <- function(x) {
+  h(x = 3)
+}
+# Function h()
+h <- function(x) {
+  lobstr::cst()
+}
+```
+
+We can use function from the `lobstr` package to understand call stacks:
+
+```{r}
+f(x = 1)
+```
+
+This shows that the `lobstr::cst()` function was called from `h()`, which was called from `g()`, which was called from `f()`.
+
+---
+
+## Lazy evaluation
+
+Let us examine a more complicated example:
+
+```{r}
+a <- function(x) {
+  b(x)
+}
+b <- function(x) {
+  c(x)
+}
+c <- function(x) {
+  x
+}
+```
+
+The sequence above indicates that the argument x is evaluated by `c()`. This argument is supplied via a call to `b()` which is a wrapper around `c()`. The argument for `b()` is supplied via a called to `a()` which is a wrapper around `b()`. **Essentially, this sequence of function `a()`, `b()`, and `c()` passes along the argument x.
+
+```{r}
+a(x = f())
+```
+
+The argument `x = f()` is lazily evaluated so this tree has two branches. The first branch happens when `a()` calls `b()` and `b()` calls `c()`. The second branch starts when `c()` evaluates the argument `x = f()`, and returns `x = f()`, that is, the function `f()` is called when `c()` finally evaluates the argument passed along to it from `a()` and `b()`. **Note**: This argument is evaluated in the new branch because the environment in which `f()` is evaluated is the global environment and not the execution environment of `c()`.
+
+---
+
+## Frames
+
+Each element of a call stack is a **frame**, also known as the evaluation context. The frame is an internal data structure, and tampering with it will break R. A frame has three key components:
+
+* An expression (`expr`) giving the function call. This is what `traceback()` points out.
+
+* An environment (`nev`) that is usually the execution environment of a function.
+
+  - One exception is the global frame, whose environment is the global environment
+  
+  - Another exception is the call to `eval()` which generate frames where the environment can be anything
+  
+* Lastly, a parent, which is the previous call in the call stack (grey arrows)
+
+```{r, echo=FALSE, fig.height=4, fig.width=5}
+knitr::include_graphics(path = "Diagrams/frames.png")
+```
+
+**Note**: the bindings in the global environment from the names to the function environments are omitted, but they are still there. The frames also hold exit handlers, restarts and handlers for the condition system, and which context to return to when a function completes.
+
+---
+
+## Dynamic Scope
+
+Looking up variables in the calling stack rather than in the enclosing environment is called dynamic scoping. Dynamic scoping is primarily useful for developing functions that aid interactive data analysis, which will be the topic of chapter 20.
+
+---
+
+# Exercise 
+
+Write a function that lists all the variables defined in the environment in which it was called. It should return the same results as `ls()`.
+
+```{r}
+ls2 <- function() {
+  # Character vector of bindings
+  base::sort(
+    x = base::names(x = rlang::caller_env())
+    )
+}
+```
+
+I could have used `rlang::env_names(env)`, but Hadley suggests using `names()` in R 3.2.0 or greater. Let us see it in action:
+
+```{r}
+# My function
+ls2()
+# Base R function
+base::ls(all.names = TRUE)
+```
+
+---
+
+```{r}
+rlang::env_unbind(env = rlang::global_env(), nms = rlang::env_names(env = rlang::global_env()))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

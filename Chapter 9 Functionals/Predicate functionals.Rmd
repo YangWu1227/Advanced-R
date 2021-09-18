@@ -1,0 +1,296 @@
+---
+title: "Predicate functionals"
+author: "Ken Wu"
+date: "7/31/2021"
+output:
+  bookdown::html_document2:
+    toc: true
+    toc_float: true
+    number_sections: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(collapse = TRUE)
+knitr::opts_chunk$set(comment = NA)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(fig.width = 6, fig.height = 4, fig.align = "center")
+library(tidyverse)
+library(Stat2Data)
+options(digits = 7)
+```
+
+## Predicate functionals
+
+A **predicate** is a function that returns a single TRUE or FALSE, like `is.character()`, `is.null()`, or `all()`, and we say a predicate **matches** a vector if it returns TRUE. A **predicate functional** applies a predicate to each element of a vector.
+
+---
+
+### Do every, some, or none of the elements of a list satisfy a predicate function?
+
+* `some(.x, .p, ...)` returns True if *any* element matches, i.e. returns TRUE. Put another way, it returns TRUE when .p is TRUE for at least one element of .x, which is a list or atomic vector
+
+* `every(.x, .p, ...)` returns True if *all* elements match. In other words, it returns TRUE when .p is TRUE for all elements of .x  
+
+* `none(.x, .p, ...)` returns TRUE when .p is FALSE for all elements of .x, i.e. there is no match
+
+These are similar to `any(map_lgl(.x, .p))`, `all(map_lgl(.x, .p))` and `all(map_lgl(.x, negate(.p)))`, but they terminate early: `some(.x, .p, ...)` returns TRUE when it sees the first TRUE, and `every(.x, .p, ...)` and `none(.x, .p, ...)` return FALSE when they see the first FALSE or TRUE respectively.
+
+---
+
+### Find the value or position of the first match
+
+* `detect(.x, .f, ..., .dir = c("forward", "backward"), .default = NULL)` returns the value of the first element that matches the predicate. The .default argument specifies the value to be returned when nothing is detected
+
+* `detect_index(.x, .f, ..., .dir = c("forward", "backward"))` returns the position of the first match
+
+If not found, `detect` returns NULL and `detect_index` returns 0.
+
+---
+
+### Keep or discard elements using a predicate function
+
+* `keep(.x, .p, ...)` keeps all matching elements
+
+* `discard(.x, .p, ...)` drops all matching elements
+
+---
+
+### Examples
+
+```{r}
+# Find the values of the factor variable
+str(detect(.x = iris, .f = is.factor))
+# Data frame is a named list with vector elements, find the position of the factor
+detect_index(.x = iris, .f = is.factor)
+# Keep only the factor variable
+str(keep(.x = iris, .p = is.factor))
+# Remove factor variable
+str(discard(.x = iris, .p = is.factor))
+```
+
+---
+
+## Map variants that apply a function to each element of a vector conditionally
+
+`map()` and `modify()` come in variants that also take predicate functions, transforming only the elements of .x where .p is TRUE. The functions map_if() and map_at() take .x as input, apply the function .f to some of the elements of .x, and return a list of the same length as the input.
+
+* `map_if(.x, .p, .f, ..., .else = NULL)` takes a predicate function .p as input to determine which elements of .x are transformed with .f; the argument .else accepts a function to be applied to elements of .x for which .p returns FALSE
+
+* `map_at(.x, .at, .f, ...)` takes a vector of names or positions .at to specify which elements of .x are transformed with .f
+
+* `map_depth(.x, .depth, .f, ..., .ragged = FALSE)` allows to apply .f to a specific depth level of a nested vector
+
+```{r}
+# Create data frame
+df <- data.frame(
+  num1 = c(0, 10, 20),
+  num2 = c(5, 6, 7),
+  chr1 = c("a", "b", "c"),
+  stringsAsFactors = FALSE
+)
+# Find the mean of the numeric variables
+map_if(.x = df, .p = is.numeric, .f = mean)
+# Modify the numeric variables s
+# Since modify keeps the data frame structure, the single means are recycled 3 times
+modify_if(.x = df, .p = is.numeric, .f = mean)
+# Keep on the numeric variables and then supply that altered df (list) to .x in map
+map(.x = keep(.x = df, .p = is.numeric), .f = mean)
+```
+
+---
+
+## Exercises 
+
+### Exercise 1
+
+Why isn’t `is.na(x)` a predicate function? What base R function is closest to being a predicate version of `is.na(x)`? 
+
+The function `is.na(x)` is not a predicate function since it returns a logical vector of the same length as its argument x, containing TRUE for those elements marked NA or, for numeric or complex vectors, NaN, and FALSE otherwise. A predicate function, on the other hand, returns **a logical vector of length 1**. The function `anyNA(x, recursive = FALSE)` is the closest to being a predicate version of `is.na(x)`.
+
+---
+
+### Exercise 2
+
+The function `simple_reduce(x, f)` has a problem when x is length 0 or length 1. Describe the source of the problem and how you might go about fixing it:
+
+```{r,eval=FALSE}
+simple_reduce <- function(x, f) {
+  out <- x[[1]]
+  for (i in seq(2, length(x))) {
+    out <- f(out, x[[i]])
+  }
+  out
+}
+```
+
+The simple implementation above has a problem when x has length 1 or 0--- "Error in x[[i]] : subscript out of bounds."  The for loop always starts with the index 2, and `seq()` can count both up and down; therefore, sub-setting length-0 or length-1 vectors via [[ will lead to a subscript out of bounds error. To fix the issue:
+
+```{r,eval=FALSE}
+simple_reduce <- function(x, f, default) {
+  # Return default value if length 0
+  if (length(x) == 0L) {
+    return(default)
+  }
+  # Return x if length 1
+  if (length(x) == 1L) {
+    return(x[[1L]])
+  }
+
+  out <- x[[1]]
+  for (i in seq(2, length(x))) {
+    out <- f(out, x[[i]])
+  }
+  out
+}
+```
+
+---
+
+### Exericse 3
+
+Implement the span() function from Haskell: given a list x and a predicate function f, span(x, f) returns the location of the longest sequential run of elements where the predicate is true (Hint: you might find `rle(x)` helpful.):
+
+```{r}
+# Create a list with three characters and one integer
+x <- list(letters[2:34], sample(x = 1:24, size = 10), letters[2:9], letters[9:12])
+str(x)
+# Apply predicate
+index <- map_lgl(.x = x, .f = ~ is.numeric(.x))
+index
+# Use rle
+# The third false is associated with 2 since it appeared twice "consecutively" in "index"
+rle(x = index)
+```
+
+---
+
+```{r}
+span_r <- function(x, f) {
+
+  # Apply predicate function to x
+  # This returns a logical index vector
+  idex <- unname(map_lgl(.x = x, .f = ~ f(.x)))
+  # The rle function returns a rle object, a list with two attr-- names and class (rle)
+  # The two elements are lengths and values
+  # For the index vector "index", the values are either TRUE or FALSE
+  # The lengths show the number of times each value appears "consecutively" in "index"
+  rle <- rle(x = idex)
+
+  # Check if the predicate is never TRUE
+  # The condition !any(rle[["values"]]) will evaluate to TRUE if all values are FALSE
+  if (!any(rle[["values"]])) {
+
+    # If predicate is never TRUE, return a zero length vector
+    return(integer(0))
+  }
+
+  # Vector of lengths
+  lengths_of_values <- rle[["lengths"]]
+  # Logical index, sub-set to only keep length values that are associated with TRUE
+  # That is, we only care about when the predicate evaluates to TRUE in "values"
+  index_for_lengths <- rle[["values"]]
+  # Find the length of the longest sequence of TRUE values
+  longest_length <- max(lengths_of_values[index_for_lengths])
+  # Find the position of the (first if there are ties) longest run in rle
+  # The function which() gives the TRUE indices of a logical object
+  positions_of_longest <- which(
+    x = index_for_lengths & lengths_of_values == longest_length
+  )[1]
+
+  # Subset to get all lengths before the longest length
+  # Add up all these lengths in rle before the longest length
+  # This value is the # of elements in "x" before first True of the longest seq of TRUE's
+  number_of_elements_before_longest <- sum(
+    lengths_of_values[seq_len(positions_of_longest - 1)]
+  )
+
+  # Therefore, the first True of the longest seq of True's will be 1 plus the value above
+  out_start <- number_of_elements_before_longest + 1L
+  # The last True of the longest seq is the value above plus the length of longest seq
+  out_end <- number_of_elements_before_longest + longest_length
+  # The indices of the longest run of TRUE's
+  out_start:out_end
+}
+```
+
+---
+
+```{r}
+# Test: Predicate function is never TRUE
+span_r(c(0, 0, 0, 0, 0), is.na)
+# Test: Longest run of TRUE is just 1 and its location is the first element
+span_r(c(NA, 0, 0, 0, 0), is.na)
+# Test: Longest run of TRUE is just 3 and its location spans from 3 to 5, inclusive
+span_r(c(NA, 0, NA, NA, NA), is.na)
+```
+
+---
+
+### Exercise 4
+
+Implement `arg_max()`. It should take a function and a vector of inputs, and return the elements of the input where the function returns the highest value. For example, `arg_max(-10:5, function(x) x ^ 2)` should return -10. `arg_max(-5:5, function(x) x ^ 2)` should return c(-5, 5). Also implement the matching `arg_min()` function:
+
+```{r}
+arg_max <- function(x, f) {
+
+  # Store user supplied function
+  f <- f
+  # Apply function f to elements of x and unlist the returned list
+  # The function max() does not accept list as inputs
+  vector_of_outputs <- map(.x = x, .f = f) %>%
+    unlist()
+  # Save the intermediate value "vector_of_outputs" since we need to reference it later
+  # It saves us from having to run map() %>% unlist() again
+  max_values <- vector_of_outputs %>% max()
+
+  # Find the element(s) that, when applied the function f, equals the max_values
+  lgl_index <- vector_of_outputs == max_values
+  # Subset the input "x" to keep only those element(s) that yields the max value(s)
+  x[lgl_index]
+}
+# Test
+arg_max(x = -9:9, f = function(x) x^2)
+```
+
+Switch `max()` to `min()` to implement `arg_min()`.
+
+---
+
+### Exercise 5
+
+The function below scales or normalizes a vector so it falls in the range [0, 1]. How would you apply it to every column of a data frame? How would you apply it to every numeric column in a data frame? The function `range(..., na.rm = FALSE)` returns a vector containing the minimum and maximum of any numeric or character objects in dot-dot-dot. The normalization formula used is:
+
+\begin{align*}
+x_{i, normalized}=\frac{x_{i, original}-x_{min}}{x_{max}-x_{min}}
+\end{align*}
+
+```{r}
+scale01 <- function(x) {
+  rng <- range(x, na.rm = TRUE)
+  (x - rng[[1]]) / (rng[[2]] - rng[[1]])
+}
+```
+
+---
+
+To apply this normalization function to every column of a data frame:
+
+```{r}
+# If all variables in a data frame are numeric
+USA_rescaled_1 <- modify(.x = USArrests, .f = scale01)
+# Or
+USA_rescaled_2 <- map_dfr(.x = USArrests, .f = scale01)
+```
+
+To apply it to every numeric column in a data frame:
+
+```{r}
+# Use map variant
+iris <- modify_if(
+  .x = iris,
+  .p = is.numeric,
+  .f = scale01
+)
+```

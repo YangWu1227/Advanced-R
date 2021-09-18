@@ -1,0 +1,518 @@
+---
+title: "Statistical Factories"
+author: "Ken Wu"
+date: "9/5/2021"
+output:
+  bookdown::html_document2:
+    toc: true
+    toc_float: true
+    number_sections: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(comment = NA)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(fig.width = 6, fig.height = 4, fig.align = "center")
+library(tidyverse)
+library(rlang)
+library(bbmle)
+library(bench)
+options(digits = 7)
+```
+
+# Box-Cox Transformation
+
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; The Box-Cox procedure is used in statistical analysis to identify a transformation from the family of power transformations on a univariate variable, $Y$, in order to address the skewness of its distribution. The family of power transformation is of the form:
+
+\begin{align*}
+Y^{\prime}=Y^{\lambda}
+\end{align*}
+
+where $\lambda$ is a parameter to be determined from the data or taken as given. For univariate data $\{Y_{1}, Y_{2},...,Y_{n}\}$, the transformation has the following form:
+$$
+Y_{i}(\lambda)=\left\{\begin{array}{ll}
+\frac{Y_{i}^{\lambda}-1}{\lambda}, &  \lambda \neq 0 \\
+\log_{e} Y_{i}, & \lambda=0
+\end{array}\right.
+$$
+
+## Implementation using function factories
+
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Here is the function factory:
+
+```{r}
+box_cox_factory <- function(lambda) {
+  if (!is.double(lambda)) {
+    rlang::abort(message = "The argument lambda must be a numeric vector.")
+  }
+
+  if (lambda == 0) {
+    function(y) log(y, base = exp(1))
+  } else {
+    function(y) ((y^lambda) - 1) / lambda
+  }
+}
+```
+
+Let us see it in action:
+
+```{r}
+# Create a transformation function where lambda = 5
+box_cox_5 <- box_cox_factory(lambda = 5)
+# Create a vector of non-normal data
+y <- rbeta(n = 500, shape1 = 6, shape2 = 1)
+# Visualize
+ggplot(data = tibble::tibble(y), mapping = aes(x = y)) +
+  geom_histogram(
+    binwidth = function(y) (max(y) - min(y)) / nclass.FD(y),
+    color = "black", fill = "orange"
+  ) +
+  labs(title = "Pre-transformation") +
+  theme(
+    panel.background = element_rect(fill = "white"),
+    panel.grid = element_blank()
+  )
+# After transformation
+ggplot(data = tibble::tibble("new_y" = box_cox_5(y)), mapping = aes(x = new_y)) +
+  geom_histogram(
+    binwidth = function(y) (max(y) - min(y)) / nclass.FD(y),
+    color = "black", fill = "orange"
+  ) +
+  labs(title = "Post-transformation") +
+  theme(
+    panel.background = element_rect(fill = "white"),
+    panel.grid = element_blank()
+  )
+```
+
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; This is by no means the *optimal* transformation, but it allows us to see the significant change to the distribution of our data. An added benefit to using the function factory is that we can visually explore how different values of $\lambda$ transform our data. This can be carried out with the help of `ggplot2::stat_function`:
+
+```{r}
+box_cox_plot_function <- function(lambda) {
+  # Change line color based on lambda value
+  ggplot2::stat_function(
+    mapping = aes(color = lambda),
+    # Use our function factory, which will return different manufactured functions based on "lambda"
+    fun = box_cox_factory(lambda = lambda),
+    size = 1
+  )
+}
+```
+
+Let us see how different values of $\lambda=\{0, 1, 2, 3, 4, 5\}$ change our data:
+
+```{r}
+ggplot(data = tibble::tibble(y), mapping = aes(x = y)) +
+  purrr::map(.x = c(0, 1, 2, 3, 4, 5), .f = box_cox_plot_function) +
+  scale_color_viridis_c(limits = c(0, 5)) +
+  labs(
+    y = "Transformed Y",
+    x = "Original Y"
+  ) +
+  theme(
+    panel.background = element_rect(fill = "white"),
+    panel.grid = element_blank()
+  )
+```
+
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; The transformation can be applied in linear regression analysis as a remedial measure when model conditions--- linearity, constancy of error variance--- are not met. I will also cover this topic in my future posts as well.
+
+```{r,echo=FALSE}
+rlang::env_unbind(env = rlang::global_env(), nms = names(rlang::global_env()))
+```
+
+---
+
+# Bootstrap Generator
+
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; The bootstrap is a powerful statistical technique that allows us to quantify the uncertainty associated with a given estimator or statistic. Ideally, to quantify the uncertainty of an estimator or statistic, we would obtain new samples of data from the population, obtaining estimators or statistics for each individual sample. In reality, however, obtaining repeated samples from a given population can be costly. The bootstrap method emulates the process of obtaining new samples, allowing us to estimate the variability of estimators or statistics without actually generating additional samples. *Rather than repeatedly obtaining independent samples from the population, the method instead obtains distinct samples by repeatedly sampling observations from the original sample.* The following diagram illustrates the essence of bootstrapping:
+
+```{r, echo=FALSE, fig.cap="Diagram from [An Introduction to Statistical Learning](https://www.statlearning.com/)", fig.align = "center"}
+knitr::include_graphics(path = "Diagrams/bootstrap.png")
+```
+
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Let us examine an application. Suppose we have a data set with two variables `x` and `y`; we wish to fit the simple linear regression model ($E\{Y\}=\beta_{0}+\beta_{1}X$) to the data. The point estimator we are interested is $\hat{\beta}_{1}$ and we wish to quantify the variability of this estimator. We can solve analytically for the point estimator of the variance of the sampling distribution of $\hat{\beta}_{1}$:
+
+\begin{align*}
+\hat{\sigma}^{2}\{\hat{\hat{\beta}_{1}}\}=\frac{MSE}{\sum(X_{1}-\bar{X})^{2}}
+\end{align*}
+
+However, we are not satisfied with just one point estimator. We would like to generate bootstrap samples of the data, fit the simple regression model to each sample, and obtain a point estimator $\hat{\beta}_{1}$ for each of the models. Then, we will empirically obtain the variance of the sampling distribution of all of these estimators, $\hat{\beta}_{1}$. 
+
+## Implementation using function factories
+
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; To solve this problem in R, we can combine function factories and functionals:
+
+```{r}
+# Generate a random data frame
+data <- tibble::tibble(
+  y = sample(x = 1:200, size = 100, replace = FALSE),
+  x = sample(x = 1:200, size = 100, replace = FALSE)
+)
+# Find the point estimator of the variance of the sampling distribution of beta hat
+lm(y ~ x, data = data) %>%
+  summary() %>%
+  purrr::pluck(.x = ., "coefficients") %>%
+  `[`(4)
+```
+
+Next, we create a function factory, and it takes as input a given data frame and a variable from which the bootstrap sample is to be generated. Ultimately, the function factory will return a manufactured function:
+
+```{r}
+bootstrap_factory <- function(df, var) {
+
+  # Initialize n
+  n <- nrow(df)
+  # Force evaluation of var
+  base::force(var)
+
+  # Manufactured function
+  function() {
+    # Select the variables and modify them
+    # Use "drop" to prevent data frame from being simplified to a matrix
+    df[var] <- df[var][sample(x = 1:n, replace = TRUE), , drop = FALSE]
+    df
+  }
+}
+```
+
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; The benefit of creating a function factory is that this bootstrap generator is data frame and variable-agnostic. If we wish to create a bootstrapping function for another data frame or other variables, we could simply create another manufactured function for that task. In the simple linear regression case with one independent variable, it may not be obvious why a function factory is beneficial. However, imagine now we have a 20-variable data frame that we need to bootstrap. This function factory will save us a lot of time in terms of copying-and-pasting, minimizing code length and the amount of typing. Next, let us generate 1000 bootstrapped data frames based on the original data frame:
+
+```{r}
+# Create a list of 1000 data frames
+# Each list element is a bootstrapped data frame
+list_of_data_frames <- purrr::map(
+  .x = 1:1000,
+  # Create a manufactured function
+  .f = ~ bootstrap_factory(df = data, var = "y")()
+)
+# Next fit the model to each of the bootstrapped data frames and extract the coefficient
+vector_of_betas <- list_of_data_frames %>%
+  # Fit the model to each of the 1000 data frames
+  # This is a list of "lm" model objects
+  purrr::map(.x = ., .f = ~ lm(y ~ x, data = .x)) %>%
+  # Now extract the estimator of the coefficient on x from each of the model summary output
+  purrr::map_dbl(.x = ., .f = ~ stats::coef(.x)[[2]])
+```
+
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; As can be seen, the whole process only takes about 6 lines of code. Here's the sampling distribution of the estimator $\hat{\beta}_{1}$:
+
+```{r}
+ggplot(data = tibble::tibble(x = vector_of_betas), mapping = aes(x = x)) +
+  geom_histogram(
+    binwidth = function(x) (max(x) - min(x)) / nclass.FD(x),
+    color = "black",
+    fill = "orange"
+  ) +
+  theme(
+    panel.background = element_rect(fill = "white"),
+    panel.grid = element_blank()
+  )
+```
+
+And the standard deviation of this sampling distribution is `r var(vector_of_betas) %>% sqrt() %>% round(digits = 6)`. Does this confirm our standard error calculation from earlier or refute it? 
+
+```{r,echo=FALSE}
+rlang::env_unbind(env = rlang::global_env(), nms = names(rlang::global_env()))
+```
+
+---
+
+# Maximum Likelihood Estimation
+
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Another application of function factories is the estimation of the parameters of the normal error regression model:
+
+\begin{align*}
+Y_{i}=\beta_{0}+\beta_{1}X_{i} + \varepsilon_{i}
+\end{align*}
+
+For this model, each $Y_{i}$ observation is normally distributed with mean $E\{Y\}=\beta_{0}+\beta_{1}X_{i}$ and standard deviation $\sigma$. The method of maximum likelihood uses the density of the probability distribution at $Y_{i}$ as a measure of consistency for the observation $Y_{i}$. In general, the density of an observation $Y_{i}$ for the normal error model is given as:
+
+\begin{align*}
+f_{i}=\frac{1}{\sqrt{2\sigma}}\text{exp}\bigg[-\frac{1}{2}\bigg(\frac{Y_{i}-\beta_{0}-\beta_{1}X_{i}}{\sigma}\bigg)^2\bigg]
+\end{align*}
+
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; In R, this density can be computed using the `dnorm` function. We will specify the following variables:
+
+* $y=Y_{i}$
+
+* $\text{expected_y}=E\{Y\}=\beta_{0}+\beta_{1}X_{i}$
+
+* $\text{sigma}=\sigma$
+
+```{r,eval=FALSE}
+dnorm(x = y, mean = expected_y, sd = sigma)
+```
+
+**The maximum likelihood function uses the product of the densities of all the $Y_{i}$ observations as the measure of consistency of the parameter values with the sample data.** In other words, the likelihood function for $n$ observations $Y_{1},Y_{2},...Y_{n}$ is the product of the individual densities $f_{i}$:
+
+\begin{align*}
+    L(\beta_{o},\beta_{1},\sigma)=\prod_{i = 1}^{n} \frac{1}{\sqrt{2\pi}\sigma}\text{exp}\left[-\frac{1}{2}(\frac{Y_{i}-\beta_{0}-\beta_{1}X_{i}}{\sigma})^2\right]
+\end{align*}
+
+We may work with the natural log of $L(\beta_{o},\beta_{1},\sigma)$ since both $L$ and $\log_{e}L$ are maximized for the same values of $\beta_{o},\beta_{1},$ and $\sigma$. Plus, we can use the product rule such that the natural log of a product of is the sum of the natural logs, $\ln(xyz)=\ln(x)+\ln(y)+\ln(z)$. Therefore, taking the natural log of the likelihood function means that the right hand side of the equation becomes the sum of the log densities:
+
+\begin{align*}
+    \log_{e}L(\beta_{o},\beta_{1},\sigma)=\sum_{i = 1}^{n}\log_{e}\Bigg[ \frac{1}{\sqrt{2\pi}\sigma}\text{exp}\left[-\frac{1}{2}(\frac{Y_{i}-\beta_{0}-\beta_{1}X_{i}}{\sigma})^2\right]\Bigg]
+\end{align*}
+
+This will simplify our implementation in R. 
+
+## Implementation using function factories
+
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; For R implementation, we first need to generate some random data:
+
+```{r}
+# Generate random data
+data <- tibble(
+  x = rnorm(n = 150, mean = 2, sd = 24),
+  y = rnorm(n = 150, mean = 45, sd = 7)
+)
+```
+
+For comparison, let us also obtain the estimators of the parameters using the least squares method:
+
+```{r}
+# Model
+model <- lm(y ~ x, data = data) %>%
+  summary()
+# Least squares estimators
+purrr::pluck(.x = model, "coefficients") %>%
+  `[`(c(1, 2))
+# Sigma
+purrr::pluck(.x = model, "sigma")
+```
+
+Next, create the function factory:
+
+```{r}
+likelihood_factory <- function(x, y) {
+
+  # Initialize y and x
+  y <- force(y)
+  x <- force(x)
+
+  # Manufactured function
+  function(beta0, beta1, sigma) {
+
+    # Linear regression model
+    # The value of "x" is scoped from the enclosing environment of this manufactured function
+    expected_y <- beta0 + beta1 * x
+    # Negative log-likelihood function
+    # The value of "y" is scoped from the enclosing environment of this manufactured function
+    # Negatively scale the log-likelihood values since we want to maximize
+    -sum(dnorm(x = y, mean = expected_y, sd = sigma, log = TRUE))
+  }
+}
+```
+
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; The advantage of creating a function factory is that we initialize "x" and "y" in the execution environment of `likelihood_factory`, which is the enclosing environment of the manufactured function and where it scopes for the values of "x" and "y". Without the captured and encapsulated environment of a factory function, "x" and "y" will have to be stored in the global environment. Here they can be overwritten or deleted as well as interfere with other bindings. So, in a sense, the function factory here provides an extra layer of safeguarding. To find the maximum likelihood estimators, we supply a manufactured function to the `bbmle::mle2` function from the `bbmle` package:
+
+```{r}
+bbmle::mle2(
+  minuslogl = likelihood_factory(data$x, data$y),
+  start = list(beta0 = 0, beta1 = 0, sigma = 50)
+)
+```
+
+How do the maximum likelihood estimators compare to those of the least squares method? (Hint: For normal data, they should be consistent with each other.)
+
+```{r,echo=FALSE}
+rlang::env_unbind(env = rlang::global_env(), nms = names(rlang::global_env()))
+```
+
+---
+
+# Exercises
+
+## Exercise 1
+
+In `boot_model()`, why don’t we need to force the evaluation of df or model:
+
+The data frame "df" is already evaluated when it is supplied as an argument to `lm` and the model is when it is supplied as an argument to `fitted`.
+
+---
+
+## Exercise 2
+
+Why might you formulate the Box-Cox transformation like this?
+
+```{r}
+boxcox3 <- function(x) {
+  function(lambda) {
+    if (lambda == 0) {
+      log(x)
+    } else {
+      (x^lambda - 1) / lambda
+    }
+  }
+}
+```
+
+In this case, the variable "x" will be lazily evaluated since it is only access when `boxcox_manufactured` is called and not when `boxcox3` is called:
+
+```{r}
+# New vector
+x <- sample(x = 1:30, size = 40, replace = TRUE)
+# Manufactured function
+boxcox_manufactured <- boxcox3(x = x)
+# Print environment
+rlang::env_print(env = boxcox_manufactured)
+```
+
+The downside to this is that `x` must now be defined in the global environment, where it may be interfered with. It is much safer in the enclosing environment of the manufactured or the execution environment of the factory. The upside to this is we may now see how different values of $\lambda$ transform our data:
+
+```{r}
+# Create a manufactured function
+boxcox_airpassengers <- boxcox3(AirPassengers)
+# Plot the post-transformed variables
+plot(boxcox_airpassengers(0))
+plot(boxcox_airpassengers(3))
+```
+
+---
+
+## Exercise 3
+
+Why don’t you need to worry that `boot_permute()` stores a copy of the data inside the function that it generates?
+
+We can type this empirically:
+
+```{r}
+# Object address
+mtcars %>% lobstr::obj_addr()
+# Start tracemem
+base::tracemem(mtcars)
+```
+
+Run the factory:
+
+```{r}
+boot_permute <- function(df, var) {
+  n <- nrow(df)
+  force(var)
+
+  function() {
+    col <- df[[var]]
+    col[sample(n, replace = TRUE)]
+  }
+}
+```
+
+Now, create a manufactured function:
+
+```{r}
+boot_mtcars <- boot_permute(df = mtcars, var = "mpg")
+```
+
+Check the bindings in the enclosing environment of this manufactured function:
+
+```{r}
+rlang::env_print(env = boot_mtcars)[["df"]] %>% lobstr::obj_addr()
+```
+
+As can be seen, `df` is evaluated in the execution environment of the factory and the enclosing environment of the manufactured function. Now, call the manufactured function: 
+
+```{r}
+boot_mtcars()
+```
+
+Has the data object changed address?
+
+```{r}
+mtcars %>% lobstr::obj_addr()
+```
+
+Not only has the object address not changed, `tracemem` never emerged throughout the whole process, proving to us that there was never a copy created of the data frame inside the manufactured function. In other words, when "df" is evaluated in the enclosing environment of the `bootmtcars`, it merely references the original object `mtcars`. 
+
+```{r}
+base::untracemem(mtcars)
+```
+
+---
+
+## Exercise 4
+
+How much time does `ll_poisson2()` save compared to `ll_poisson1()`? Use `bench::mark()` to see how much faster the optimization occurs. How does changing the length of x change the results?
+
+```{r}
+# Two versions of function factory
+ll_poisson1 <- function(x) {
+  n <- length(x)
+
+  function(lambda) {
+    log(lambda) * sum(x) - n * lambda - sum(lfactorial(x))
+  }
+}
+
+ll_poisson2 <- function(x) {
+  n <- length(x)
+  sum_x <- sum(x)
+  c <- sum(lfactorial(x))
+
+  function(lambda) {
+    log(lambda) * sum_x - n * lambda - c
+  }
+}
+```
+
+Benchmark performance:
+
+```{r}
+# Benchmark function
+bench_poisson <- function(x_length) {
+  x <- rpois(x_length, 100L)
+
+  bench::mark(
+    llp1 = optimise(ll_poisson1(x), c(0, 100), maximum = TRUE),
+    llp2 = optimise(ll_poisson2(x), c(0, 100), maximum = TRUE),
+    time_unit = "ms"
+  )
+}
+# Apply the bench mark function to five vectors with varying lengths
+# The function map_dfr() returns a data frame created by row-binding
+performances <- map_dfr(10^(1:5), bench_poisson)
+# Data frame to store benchmark results
+df_perf <- tibble(
+  x_length = rep(10^(1:5), each = 2),
+  method   = rep(attr(performances$expression, "description"), 5),
+  median   = performances$median
+)
+# Visualize results
+ggplot(df_perf, aes(x_length, median, col = method)) +
+  geom_point(size = 2) +
+  geom_line(linetype = 2) +
+  scale_x_log10() +
+  labs(
+    x = "Length of x",
+    y = "Execution Time (ms)",
+    color = "Method"
+  ) +
+  theme(legend.position = "top")
+```
+
+---
+
+## Exercise 5
+
+Which of the following commands is equivalent to `with(x, f(z))`?
+
+* x$f(x$z).
+* f(x$z).
+* x$f(z).
+* f(z).
+* It depends.
+
+```{r}
+# List with a function and a vector
+f <- mean
+z <- 1
+x <- list(f = mean, z = 1)
+# Test
+identical(with(x, f(z)), x$f(x$z))
+identical(with(x, f(z)), f(x$z))
+identical(with(x, f(z)), x$f(z))
+identical(with(x, f(z)), f(z))
+```

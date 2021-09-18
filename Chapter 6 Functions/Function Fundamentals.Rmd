@@ -1,0 +1,254 @@
+---
+title: "Function Fundamentals"
+author: "Ken Wu"
+date: "7/13/2021"
+output:
+  bookdown::html_document2:
+    toc: true
+    toc_float: true
+    number_sections: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(collapse = TRUE)
+knitr::opts_chunk$set(comment = NA)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(fig.width = 6, fig.height = 4, fig.align = "center")
+library(tidyverse)
+options(digits = 7)
+```
+
+## Function fundamentals
+
+To understand functions in $\mathrm{R}$ you need to internalize two important ideas:
+
+* Functions can be broken down into three components: arguments, body, and environment.
+
+There are exceptions to every rule, and in this case, there is a small selection of "primitive" base functions that are implemented purely in $\mathrm{C}$.
+
+* Functions are objects, just as vectors are objects.
+
+## Function components
+
+A function has three parts:
+
+* The `formals()`, the list of arguments that control how you call the function.
+* The `body ()`, the code inside the function.
+* The `environment()`, the data structure that determines how the function finds the
+values associated with the names.
+
+The formals and body are specified explicitly while the function environment is specified implicitly, based on where the function is defined. User-defined functions will mostly commonly be defined in the Global Environment.
+
+```{r}
+# User-defined function
+f <- function(x, y) {
+  # A comment
+  x + y
+}
+# Part of function
+formals(f)
+body(f)
+environment(f)
+environment(sort)
+# Attributes
+attr(f, "srcref")
+```
+
+## Primitive function
+
+```{r}
+# Primitive functions call C code directly
+sum
+`[`
+`+`
+# Two types
+typeof(sum)
+typeof(`[`)
+typeof(`+`)
+# No parts since these functions exist primarily in C
+formals(`[`)
+body(sum)
+environment(`[`)
+```
+
+## First-class functions
+
+R functions are objects in their own right, a language property called "first-class functions." 
+
+```{r}
+# Create a function object and bind it to the name "f1"
+# In other words, the name "f1" points to or references the function object
+f1 <- function(x) {
+  sin(1 / x^2)
+}
+```
+
+**Anonymous functions** are those without names.
+
+```{r}
+# Find number of unique values in each variable in the mtcars data set
+lapply(X = mtcars, FUN = function(x) length(unique(x)))
+# Filter extracts the elements of a vector for which a predicate (logical) function gives true
+# Find the elements of the named-list that are not numeric
+Filter(f = function(x) !is.numeric(x), x = mtcars)
+# Returns row names since it is a character vector
+str(row.names(mtcars))
+# Integrate anonymous function over the interval between 0 and pi
+integrate(f = function(x) sin(x)^2, lower = 0, upper = pi)
+```
+
+---
+
+## Invoking a function
+
+The function `do.call()` constructs and executes a function call from a name or a function and a list of arguments to be passed to it:
+
+* what: either a function or a non-empty character string naming the function to be called.
+
+* args: a list of arguments to the function call. **The names attribute of args gives the argument names.**
+
+* quote: a logical value indicating whether to quote the arguments.
+
+* envir: an environment within which to evaluate the call. This will be most useful if what is a character string and the arguments are symbols or quoted expressions.
+
+
+```{r}
+# Store arguments in a data structure
+args <- list(1:10, na.rm = TRUE)
+str(args)
+attributes(args)
+# Use do.call
+do.call(what = "mean", args = args)
+```
+
+---
+
+## Exercises
+
+### Exercise 1 
+
+Given a name, like "mean", `match.fun()` lets you find a function. Given a function, can you find its name? Why doesn’t that make sense in R?
+
+In R there is no one-to-one mapping between functions and names. A name always points to a single object, but an object may have zero, one or many names.
+
+Example:
+
+```{r}
+# Find function by name
+match.fun(FUN = mean)
+match.fun(FUN = select)
+# Functions can have many names
+function(x) sd(x) / mean(x)
+f1 <- function(x) (x - min(x)) / (max(x) - min(x))
+f2 <- f1
+f3 <- f1
+```
+
+While the function in the first line is not bound to a name multiple names (f1, f2 and f3) point to the second function. So, the main point is that the relation between name and object is only clearly defined in one direction. Besides that, there are obviously ways to search for function names. However, to be sure to find the right one(s), you should not only compare the code (body) but also the arguments (formals) and the creation environment. As `formals()`, `body()` and `environment()` all return NULL for primitive functions, the easiest way to check if two functions are exactly equal is just to use `identical()`.
+
+---
+
+### Exercise 2 
+
+It’s possible (although typically not useful) to call an anonymous function. Which of the two approaches below is correct? Why?
+
+```{r}
+# Anonymous function
+(function(x) 3)
+# Call the function
+(function(x) 3)()
+```
+
+The anonymous function function(x) 3 is surrounded by a pair of parentheses before it is called by (). These extra parentheses separate the function call from the anonymous function’s body. Without them a function with the invalid body 3() is returned, which throws an error when we call it. 
+
+---
+
+### Exercise 4
+
+Useful functions from the rlang package (Note: closures are functions written in R, named after the way their arguments are scoped within nested environments):
+
+* `is_function(x)`
+* `is_closure(x)`
+* `is_primitive(x)`
+
+```{r}
+rlang::is_function(x = sum)
+rlang::is_primitive(x = sum)
+rlang::is_primitive(x = filter)
+rlang::is_closure(x = filter)
+```
+
+---
+
+### Exercise 5
+
+Search by name for zero or more objects using `mget(x, envir = as.environment(-1), mode = "any", ifnotfound, inherits = FALSE)`
+
+```{r}
+objs <- mget(ls("package:base", all = TRUE), inherits = TRUE)
+funs <- Filter(f = is_function, x = objs)
+# Find the formals of the second function in the list
+formals(pluck(.x = funs, 2))
+```
+
+a. Find the length of the formals of all the list elements:
+
+```{r}
+# Find number of arguments and store them as a named integer vector
+num_of_args <- funs %>%
+  map(formals) %>%
+  map_int(length)
+# Sort in decreasing order
+num_of_args %>%
+  sort(decreasing = TRUE) %>%
+  head()
+```
+
+b. Number of base functions with no arguments:
+
+```{r}
+# Count (including primitive functions which returns NULL which has length zero)
+sum(num_of_args == 0)
+# Remove primitive
+num_of_args <- funs %>%
+  discard(is.primitive) %>%
+  map(formals) %>%
+  map_int(length)
+sum(num_of_args == 0)
+```
+
+c. Adapt the code to find all primitive functions:
+
+```{r}
+# One way
+objs <- mget(ls("package:base", all = TRUE), inherits = TRUE)
+prim_funs <- Filter(f = rlang::is_primitive, x = objs)
+# Another way
+funs <- Filter(rlang::is_primitive, objs)
+length(funs)
+```
+
+---
+
+### Exercise 6
+
+The three important components of a function are `formals()`, `body()`, and `environment()`. The exception is that primitive functions have all three as NULL.
+
+---
+
+### Exericse 7
+
+Primitive functions do not print their environment. However, they always exist.
+
+```{r}
+# Primitive function
+sum
+# Function defined in base R
+mean
+# Function defined in Global Environment
+f
+```
+
+For functions defined in GE, the function's srcref (source code) is printed instead.

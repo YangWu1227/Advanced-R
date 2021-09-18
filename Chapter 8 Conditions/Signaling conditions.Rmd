@@ -1,0 +1,194 @@
+---
+title: "Signalling conditins"
+author: "Yang Wu"
+date: "9/12/2021"
+output:
+  bookdown::html_document2:
+    toc: true
+    toc_float: true
+    number_sections: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(comment = NA)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(fig.width = 6, fig.height = 4, fig.align = "center")
+library(rlang)
+library(tidyverse)
+options(digits = 4)
+```
+
+# Errors
+
+In base R, errors are thrown by `base::stop(..., call. = TRUE)`. It is good practice to suppress the part of the error message that includes the call to the function that generated the error, since we can usually get the information using `base::traceback()`.
+
+```{r, eval=FALSE}
+base::stop("This is an error", call. = FALSE)
+```
+
+The `rlang` equivalent is `rlang::abort()`, which automatically suppresses printing the call.
+
+```{r, eval=FALSE}
+rlang::abort(message = "This is an error")
+```
+
+To paste together multiple inputs as complex error messages, we could use `glue::glue(..., .sep = "", envir = parent.frame(), .open = "{", .close = "}", .na = "NA", .transformer = identity_transformer, .trim = TRUE)`, which formats and interpolate expressions enclosed by braces as R code.
+
+```{r}
+intro <- function(name, profession, country) {
+  glue::glue("My name is {name}, a {profession} from {country}.")
+}
+intro("Ken", "Data Analyst", "China")
+```
+
+Examine the [tidyverse style guide](https://style.tidyverse.org/error-messages.html) for general principles for error messages.
+
+---
+
+# Warnings
+
+Warnings can be created using `base::warning(..., call. = TRUE)`, but use `rlang::warn()` to suppress printing the call. The function below does not show the warnings since I set `knitr::opts_chunk$set(warning = FALSE)`: 
+
+```{r}
+warning_function <- function() {
+  cat("1\n")
+  base::warning("warning 1")
+  cat("2\n")
+  base::warning("warning 2")
+  cat("3\n")
+  base::warning("warning 3")
+}
+warning_function()
+```
+
+We can control the behavior of warnings through options:
+
+* To make the warnings appear immediately, `options(warn = 1)`
+
+* To turn warnings into errors, `options(warn = 2)`
+
+* To restore to default, which means that warnings are cached and printed when the control returns to the top level interactive environment (usually the global env), `options(warn = 0)`
+
+---
+
+# Messages 
+
+Messages are informational; they are used to inform the function user that the function has done something on their behalf.
+
+```{r}
+message_function <- function() {
+  cat("1\n")
+  base::message("message 1")
+  cat("2\n")
+  base::message("messsage 2")
+  cat("3\n")
+  base::message("message 3")
+}
+message_function()
+```
+
+The `rlang` equivalent is `rlang::inform()`.
+
+---
+
+# Exercises 
+
+## Excercise 1
+
+Write a wrapper around `file.remove()` that throws an error if the file to be deleted does not exist. We will use `file.exists`, which returns a logical vector indicating whether the files named by its argument exist.
+
+```{r}
+file_remove2 <- function(file) {
+
+  # Stop of the file does not exist
+  if (!file.exists(file)) {
+    rlang::abort(message = glue::glue("The file {file} does not exist. There is nothing to delete."))
+  }
+
+  file.remove(file)
+}
+```
+
+```{r, eval=FALSE}
+# Test
+file_remove2(file = "ken")
+# Error: The file ken does not exist. There is nothing to delete.
+```
+
+---
+
+## Exercise 2
+
+What does the `appendLF` argument to `message()` do? How is it related to `cat()`?
+
+**Answer**: The argument `appendLF` is a logical vector of length 1 indicating whether messages given as a character string should have a newline appended.
+
+```{r}
+multiline_msg <- function(appendLF = TRUE) {
+  message("first", appendLF = appendLF)
+  message("second", appendLF = appendLF)
+  cat("third")
+  cat("fourth")
+}
+```
+
+Test:
+
+```{r}
+multiline_msg(appendLF = FALSE)
+multiline_msg(appendLF = TRUE)
+```
+
+On the other hand, `cat` uses `\n` for a new line:
+
+```{r}
+cat("d", sep = "\n", "z")
+```
+
+---
+
+# Ignoring conditions
+
+Messages and warnings can be suppressed:
+
+```{r}
+# Warnings as expressions
+{
+  warning("Uhoh!")
+  warning("Another warning")
+  1
+}
+# Suppress warning
+base::suppressWarnings(expr = {
+  warning("Uhoh!")
+  warning("Another warning")
+  1
+})
+# Messages as expressions
+{
+  message("Hello there")
+  2
+}
+# Suppress message
+base::suppressMessages(expr = {
+  message("Hello there")
+  2
+})
+# Suppress warning does not suppress message
+suppressWarnings({
+  message("You can still see me")
+  3
+})
+```
+
+---
+
+We can also ignore conditions by using `base::try()`, which tries an expression by allowing error to recover. A useful pattern is to do assignment inside the call to `try()`. This lets you define a default value to be used if the code does not succeed. This works because the argument `expr` in `try()` is evaluated in the calling environment, which in the case below is the global env, not inside the function.
+
+```{r}
+default <- NULL
+try(expr = {default <- read.csv("possibly-bad-input.csv")}, silent = TRUE)
+```
+
+

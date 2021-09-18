@@ -1,0 +1,234 @@
+---
+title: "Reduce family"
+author: "Ken Wu"
+date: "7/30/2021"
+output:
+  bookdown::html_document2:
+    toc: true
+    toc_float: true
+    number_sections: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(collapse = TRUE)
+knitr::opts_chunk$set(comment = NA)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(fig.width = 6, fig.height = 4, fig.align = "center")
+library(tidyverse)
+library(Stat2Data)
+options(digits = 7)
+```
+
+## Basic reduce()
+
+The function `reduce(.x, .f, ..., .init, .dir = c("forward", "backward"))` takes a vector of length n and produces a vector of length 1 by calling a function with a pair of values at a time:
+
+* .x is a list or atomic vector
+
+* .f is a 2-argument function
+
+* dot-dot-dot are the additional arguments passed on to the mapped function
+
+* .init is an argument that-- iff supplied, will be used as the first value to start the accumulation, rather than using .x[[1]]. This is useful if you want to ensure that reduce returns a correct value when .x is empty. If missing, and .x is empty, the function will throw an error
+
+* .dir is the direction of reduction as a string, one of "forward" (the default) or "backward"
+
+### Graphically
+
+```{r, out.height="40%", out.width="40%"}
+knitr::include_graphics(path = "Diagrams/reduce.png")
+```
+
+---
+
+### Example
+
+```{r}
+# List of atomic vectors
+list <- map(.x = 1:4, .f = ~ sample(x = 1:10, 15, replace = TRUE))
+# Name the four sets
+names(list) <- letters[1:4]
+# Given the four sets a:d, find the elements that occur in every set
+out <- list[[1]]
+out <- intersect(out, list[[2]])
+out <- intersect(out, list[[3]])
+out <- intersect(out, list[[4]])
+out
+# Function reduce() automates these binary function calls
+reduce(.x = list, .f = intersect, .dir = "forward")
+reduce(.x = list, .f = intersect, .dir = "backward")
+# To find every element that appears at least in one of the four sets
+reduce(.x = list, .f = union)
+```
+
+---
+
+### Basic implementation
+
+A simple wrapper around a for loop:
+
+```{r}
+# Function
+simple_reduce <- function(x, f) {
+  # Initialize the out value
+  out <- x[[1]]
+  # For loop begins with the second element of the in put list/vector "x"
+  for (i in seq.int(from = 2, to = length(x = x))) {
+    # Modify the value of out during each iteration
+    out <- f(out, x[[i]])
+  }
+  out
+}
+# Test
+simple_reduce(x = list, f = intersect)
+```
+
+---
+
+### Base R equivalent
+
+The base equivalent is `base::Reduce(f, x, init, right = FALSE, accumlate = FALSE)`. Note that the argument order is different: the function comes first, followed by the vector, and there is no way to supply additional arguments. Common Higher-Order Functions:
+
+* Reduce(f, x, init, right = FALSE, accumulate = FALSE)
+* Filter(f, x)
+* Find(f, x, right = FALSE, nomatch = NULL)
+* Map(f, ...)
+* Negate(f)
+* Position(f, x, right = FALSE, nomatch = NA_integer_)
+
+---
+
+## Accumulate
+
+The function `accumulate(.x, .f, ..., .init, .dir = c("forward", "backward"))` sequentially applies a 2-argument function to elements of a vector. Each application of the function uses the initial value or result of the previous application as the first argument. The second argument is the next value of the vector. The results of each application are returned in a list
+
+```{r}
+x <- sample(x = 1:23, size = 17, replace = FALSE)
+# Reduce
+reduce(.x = x, .f = `+`)
+# Accumulate
+accumulate(.x = x, .f = `+`)
+```
+
+This is equivalent to x[[1]] + x[[2]] + ... + x[[17]].
+
+---
+
+## Output types
+
+The ".init" argument---	**If supplied, will be used as the first value to start the accumulation, rather than using .x[[1]]**. This is useful if you want to ensure that reduce returns a correct value when .x is empty. If missing, and .x is empty, will throw an error:
+
+```{r, out.height="40%", out.width="40%"}
+knitr::include_graphics(path = "Diagrams/reduce-init.png")
+```
+
+
+```{r}
+# x + 0 = 0 since x is 0-length vector
+sum(x = integer())
+# x * 1 = 1 since since x is a 0-length vector
+prod(x = integer())
+# min(x, Inf) = Inf since x is a 0-length vector
+min(x = integer())
+# max(x, -Inf) = -Inf since x is a 0-length vector
+max(x = integer())
+```
+
+When using `reduce()` in a function, always supply .init. Think carefully about what the function .f should return when passing a vector of length 0 or 1, and make sure to test the implementation.
+
+---
+
+## Multiple inputs using reduce2()
+
+Very occasionally there is the need to pass two arguments to the function that we’re reducing. For example, we might have a list of data frames that we wish to join together, and the key variables used to join will vary from element (table) to element (table).
+
+```{r, eval=FALSE}
+# Practice data
+library(nycflights13)
+# Table 1
+airlines <- nycflights13::airlines %>%
+  mutate(carrier_name = name) %>%
+  select(-name)
+# Table 2
+airports <- nycflights13::airports %>%
+  mutate(airport_name = name) %>%
+  select(-name)
+# Table 3
+planes <- nycflights13::planes %>%
+  mutate(year_manufactured = year) %>%
+  select(-year)
+# Table 4
+weather <- nycflights13::weather
+# Table 5
+flights <- nycflights13::flights
+```
+
+### Relational database
+
+```{r, out.height="40%", out.width="40%"}
+knitr::include_graphics(path = "Diagrams/nycflights.png")
+```
+
+* flights connects to planes via a single variable, tailnum.
+
+* flights connects to airlines through the carrier variable.
+
+* flights connects to airports in two ways: via the origin and dest variables.
+
+* flights connects to weather via origin (the location), and year, month, day and hour (the time).
+---
+
+### Chain together multiple lef-joins with reduce2()
+
+The .x argument takes in a list of data frames and the .y argument takes in character vectors of varying lengths containing key variables that are used for the left-joins.
+
+```{r, eval=FALSE}
+reduce2(
+  .x = list(flights, weather, planes, airports, airlines),
+  .y = list(
+    c("origin", "year", "month", "day", "hour"),
+    c("tailnum"),
+    # Could have used "dest" = "faa"
+    c("origin" = "faa"),
+    c("carrier")
+  ),
+  .f = dplyr::left_join
+)
+```
+
+The above is equivalent to:
+
+```{r, eval=FALSE}
+table <- left_join(
+  x = flights, y = weather,
+  by = c("origin", "year", "month", "day", "hour")
+)
+table <- left_join(
+  x = table, y = planes,
+  by = c("tailnum")
+)
+table <- left_join(
+  x = table, y = ariports,
+  by = c("origin" = "faa")
+)
+table <- left_join(
+  x = table, y = airplanes,
+  by = c("carrier")
+)
+```
+
+---
+
+**Note**: The length of the second argument varies based on whether or not .init is supplied: if you have four elements of x, f will only be called three times. If you supply init, f will be called four times:
+
+```{r, out.height="40%", out.width="40%"}
+knitr::include_graphics(path = "Diagrams/reduce2.png")
+```
+
+---
+
+```{r, out.height="40%", out.width="40%"}
+knitr::include_graphics(path = "Diagrams/reduce2-init.png")
+```

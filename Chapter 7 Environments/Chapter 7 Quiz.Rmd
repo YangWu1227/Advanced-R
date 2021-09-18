@@ -1,0 +1,36 @@
+---
+title: "Chapter 7 Quiz"
+author: "Ken Wu"
+date: "8/29/2021"
+output: pdf_document
+---
+
+1. **List at least three ways that an environment differs from a list.**
+
+* An environment must have unique bindings, which is why it modifies-in-place.
+
+* An environment has a parent.
+
+* An environment cannot be subsetted using numeric indices or single `[` operator for multiple elements.
+
+* The elements of an environment is not ordered. 
+
+* Every object in an environment must have a name.
+
+2. **What is the parent of the global environment? What is the only environment that doesn’t have a parent?**
+
+The parent of the global environment is the last package attached to the search path. The only environment without a parent is the empty environment to which all environments terminate.
+
+3. **What is the enclosing environment of a function? Why is it important?**
+
+The enclosing environment of a function is the environment where it was defined. It controls where the function looks for its variables.
+
+4. **How do you determine the environment from which a function was called?**
+
+Use `rlang::caller_env()`.
+
+5. **How are <- and <<- different?**
+
+The assignment operator creates a binding from a name to an object in the current environment while the super assignment operator rebinds an *existing* name in a parent of the current environment. 
+
+

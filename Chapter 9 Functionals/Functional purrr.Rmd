@@ -1,0 +1,618 @@
+---
+title: 'Functional- purrr::map()'
+author: "Ken Wu"
+date: "7/25/2021"
+output:
+  bookdown::html_document2:
+    toc: true
+    toc_float: true
+    number_sections: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(collapse = TRUE)
+knitr::opts_chunk$set(comment = NA)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(fig.width = 6, fig.height = 4, fig.align = "center")
+library(tidyverse)
+library(Stat2Data)
+options(digits = 7)
+```
+
+\tableofcontents
+
+## purrr::map()
+
+A **functional** is a function that takes a function as an input and returns a vector as output. The most fundamental functional is `purrr::map(.x, .f, ...)`, which takes a vector and function, calls the function once for each element of the vector (that is, the function takes each element of the vector as an input), and returns the results in a list.
+
+```{r}
+# Function
+triple <- function(x) x * 3
+# Map
+purrr::map(.x = 1:3, .f = triple)
+```
+
+### Graphically
+
+```{r, out.height="30%", out.width="30%"}
+# Import image
+knitr::include_graphics("Diagrams/map.png")
+```
+
+This is related to a linear algebra concept: mapping from one vector space to another. the meaning of map refers to **an operation that associates each element of a given set with one or more elements of a second set. (One-to-one OR Isomorphism And One-to-many)**
+
+---
+
+### Implementation
+
+```{r, eval=FALSE}
+simple_map <- function(x, f, ...) {
+  # Allocate a list the same length as the input
+  out <- vector("list", length(x))
+  # Fill in the list with a for loop
+  for (i in seq_along(x)) {
+    out[[i]] <- f(x[[i]], ...)
+  }
+  out
+}
+```
+
+The real purrr::map() function has a few differences: it is written in C to eke out every last iota of performance, preserves names, and supports a few shortcuts.
+
+```{r}
+# Body of purrr::map
+body(purrr::map)
+# Written in C
+rlang::is_primitive(.Call)
+```
+
+### Base equivalent
+
+The base equivalent of map is `lapply(X, FUN, ...)`, which returns a list of the same length as X, each element of which is the result of applying FUN to the corresponding element of X.
+
+---
+
+## Producing atomic vectors
+
+purrr uses the convention that suffixes refer to the output. All map_*() functions can take any type of vector as input. Some variants of `map()` are as follows:
+
+* `map_chr(.x, .f, ...)`. The input is a data frame, which is named list and each element of that list is named vector. The functional below finds the types of each named vector in the mtcars data set. 
+
+```{r}
+# map_chr() always returns a named character vector
+purrr::map_chr(.x = mtcars, .f = typeof)
+# Structure
+str(purrr::map_chr(.x = mtcars, .f = typeof))
+```
+
+---
+
+* `map_lgl(.x, .f, ...)` The functional below checks if each named vector in the mtcars data set, which is a list in and of itself, is a double vector.
+
+```{r}
+# map_lgl() always returns a named logical vector
+purrr::map_lgl(.x = mtcars, .f = is.double)
+# Structure
+str(purrr::map_lgl(.x = mtcars, .f = is.double))
+```
+
+---
+
+* `map_int(.x, .f, ...)` The functional below finds the number of unique values in each of the variables in the mtcars data set.
+
+```{r}
+# map_int() always returns a named integer vector
+n_unique <- function(x) length(unique(x))
+purrr::map_int(.x = mtcars, .f = n_unique)
+# Structure
+str(purrr::map_int(.x = mtcars, .f = n_unique))
+```
+
+---
+
+* `map_dbl(.x, .f, ...)` The functional below, combined with sub-setting, finds the mean of the "mpg" and "hp" variables in the mtcars data set.
+
+```{r}
+# map_dbl() always returns a named double vector
+# Sub-setting with `[` preserves the data frame structure
+purrr::map_dbl(.x = mtcars[c("mpg", "hp")], .f = mean)
+# Structure and Type
+str(purrr::map_dbl(.x = mtcars[c("mpg", "hp")], .f = mean))
+typeof(purrr::map_dbl(.x = mtcars[c("mpg", "hp")], .f = mean))
+```
+
+All the functions supplied to the ".f" arguments above take vectors as inputs, since each element of mtcars is a named vector.
+
+```{r, out.height="30%", out.width="30%"}
+# Import image
+knitr::include_graphics("Diagrams/map_dataframe.png")
+```
+
+In other words, all map functions always return an output vector the same length as the input, which implies that each call to .f must return a single value.
+
+```{r}
+# Length of data frame is simple the number of named vectors/columns
+length(mtcars)
+# map_*() always returns an output vector of the same length
+length(purrr::map_chr(.x = mtcars, .f = typeof))
+length(purrr::map_lgl(.x = mtcars, .f = is.double))
+length(purrr::map_int(.x = mtcars, .f = n_unique))
+# Subset of mtcars as the input
+length(mtcars[c("mpg", "hp")])
+length(purrr::map_dbl(.x = mtcars[c("mpg", "hp")], .f = mean))
+```
+
+### Base equivalent
+
+The base equivalent that return atomic vectors: `sapply(X, FUN, ..., simplify = TRUE, USE.NAMES = TRUE)` and `vapply(X, FUN, FUN.VALUE, ..., USE.NAMES = TRUE)`. 
+
+* The simplify argument in `sapply()` takes in a logical or character string indicating whether the result should be simplified to a vector, matrix or higher dimensional array if possible. 
+
+* The FUN.VALUE argument in `vapply()` is a (generalized) vector that functions a template that describes the output shape.
+
+* The USE.NAMES argument takes as input a logical; if TRUE and if X is character, use X as names for the result unless it had names already.
+
+---
+
+## Anonymous functions and shortcuts
+
+Inline anonymous functions can be used:
+
+```{r}
+# Anonymous function
+purrr::map_dbl(
+  .x = mtcars,
+  .f = function(x) length(unique(x))
+)
+# Shortcut using ~ and .x
+map_dbl(
+  .x = mtcars,
+  .f = ~ length(unique(.x))
+)
+```
+
+All purrr functions translate formulas, created by the "twiddle" ~ into functions. The underlying function is `as_mapper(.f, ...)`, which converts an object into a mapper function. The default method forwards its arguments to `rlang::as_function(x, env = caller_env())`. If the argument .f is supplied a formula, e.g. ~ .x + 2, it is converted to a function. There are three ways to **refer** to the arguments:
+
+* For a single argument function, use . or .x, which Hadley recommends using
+
+* For a two argument function, use .x and .y
+
+* For more arguments, use ..1, ..2, ..3, ..4, etc.
+
+### e.g. Four arguments
+
+```{r}
+# Create a function
+f1 <- rlang::as_function(x = ~ ..1 + ..2 + ..3 - ..4)
+# This function has four arguments
+3 + 4 + 54 - 345
+f1(3, 4, 54, 345)
+```
+
+In a `map()` function, the arguments of `f1()` can be referred to arbitrarily as ..1, ..2, and so on.
+
+### e.g. Two arguments
+
+```{r}
+# Create a function
+f2 <- rlang::as_function(x = ~ .x * .y)
+# This function has two arguments
+34 * -245.2
+f2(34, -245.2)
+```
+
+In a `map()` function, the arguments of `f2()` can be referred to arbitrarily as .x and .y
+
+### e.g. Generate random data
+
+```{r}
+# Create a list with three elements
+# Fill each element with a pair of uniformly distributed random variables
+x <- purrr::map(.x = 1:3, .f = ~ runif(n = 2))
+x
+```
+
+The map functions also have shortcuts for extracting elements from a vector, powered by purrr::pluck(). You can use a character vector to select elements by name, an integer vector to select by position, or a list to select by both name and position. These are very useful for working with deeply nested lists, which often arise when working with JSON.
+
+```{r}
+# Create a nested list
+x <- list(
+  list(-1, x = 1, y = c(2), z = "a"),
+  list(-2, x = 4, y = c(5, 6), z = "b"),
+  list(-3, x = 8, y = c(9, 10, 11))
+)
+# Structure
+str(x)
+# Select by name
+map_dbl(x, "x")
+# Or by position
+map_dbl(x, 1)
+# Or by both
+# This should select list elements with the name "y" first
+# Then, select the first element of each of those objects with the name "y"
+map_dbl(x, list("y", 1))
+# Supply a .default value for missing elements
+map_chr(x, "z", .default = NA)
+```
+
+---
+
+## Passing arguments with dot-dot-dot
+
+There are two ways:
+
+1. Additional arguments can be passed on via an anonymous function:
+
+```{r}
+# Create a list
+x <- list(1:5, c(1:10, NA))
+x
+# Pass the na.rm argument using an anonymous function
+map_dbl(.x = x, .f = ~ mean(.x, na.rm = TRUE))
+```
+
+2. Additional arguments can be passed on via ... in `map()`:
+
+```{r}
+map_dbl(.x = x, .f = mean, na.rm = TRUE)
+```
+
+---
+
+### Graphically
+
+Any arguments that come after .f in the call to `map()` are inserted after the data in individual calls to f(), which is supplied as input to .f:
+
+```{r, out.height="30%", out.width="30%"}
+# Import image
+knitr::include_graphics("Diagrams/additional_args.png")
+```
+
+**Note**: Notice that the blue box is the same across each call of `f()`. Placing additional arguments as ... in `map()` means they will be evaluated once. In contrast, placing additional arguments in an anonymous function means that they will be evaluated every time `f()` is called.
+
+```{r}
+# A function
+plus <- function(x, y) x + y
+# Create a vector
+x <- c(0, 0, 0, 0)
+# Placing the additional argument for y as ...
+# This ensures that runif(n = 1) is only evaluated once
+# The argument "y" is the same across each call of plus()
+# The sum will be the same as a result
+map_dbl(.x = x, .f = plus, runif(n = 1))
+# Placing the additional argument for y in the anonymous which is evaluted each time plus() is called
+# The argument "y" is different for each call of plus()
+# The sum will be the different as a result
+map_dbl(
+  .x = x,
+  .f = ~ plus(x = .x, y = runif(1))
+)
+```
+
+---
+
+**Note**: The arguments after .f are not decomposed; in other words, `map()` only is vectorized over its first argument. If an argument after f is a vector, it will be passed along as is:
+
+```{r, out.height="30%", out.width="30%"}
+# Import image
+knitr::include_graphics("Diagrams/additional_args_vector.png")
+```
+
+---
+
+## Varying another argument
+
+The first argument to `map()` has always become the first argument to the function supplied to ".f". There may be cases where the first argument should be constant, and we want to vary a different argument:
+
+```{r, out.height="30%", out.width="30%"}
+# Import image
+knitr::include_graphics("Diagrams/vary_another_arg.png")
+```
+
+Here the first argument is constant across each call of `f()`, the function call takes the elements of the vector as inputs of the second argument of `f()`. There are two ways to accomplish this indirectly:
+
+1. Use an anonymous function to rearrange the argument order:
+
+```{r}
+# Define a vector
+x <- sample(x = 1:23, size = 12, replace = TRUE)
+# Define a vector of possible values for the trim argument in mean()
+trims <- c(0, 0.1, 0.2, 0.5)
+# We need the first argument of mean() to be constant across each call of mean()
+# We wish to vary the values of the trim = argument in mean across each call of mean()
+# Now, the second argument is referred to as ".x" instead of the first
+purrr::map_dbl(.x = trims, .f = ~ mean(x = x, trim = .x))
+# Equivalently, without the helper ~
+# Notice that function(trim) still takes the trims vector as its first argument "trim"
+# However, the value of "trim" is used as the second argument of mean()
+# This is a function nested in another function
+purrr::map_dbl(
+  .x = trims,
+  .f = function(trim) mean(x = x, trim = trim)
+)
+```
+
+2. Rewrite `mean(x, trim)` to be `mean(trim, x)`, so map can be used as `purrr::map_dbl(.x = trims, .f = mean, x = x)`. This works since R's argument matching rules dictate that exact argument names take precedence over position. So, each call actually looks like `mean(trim[[i]], x = x)`, where, although the elements of the input vector become the first arguments of `mean()` by position, they are taken as the second argument by `mean()` since the first argument "x = " is supplied via ..., taking precedence over the position of "trim[[i]]." 
+
+```{r}
+purrr::map_dbl(.x = trims, .f = mean, x = x)
+```
+
+---
+
+## Exercise 
+
+### Exercise 1
+
+Use `as_mapper()` to explore how purrr generates anonymous functions for the integer, character, and list helpers. What helper allows you to extract attributes? Read the documentation to find out.
+
+`map()` offers multiple ways (functions, formulas, and extractor functions) to specify its function argument (.f). Initially, the various inputs have to be transformed into a valid function, which is then applied. The creation of this valid function is the job of `as_mapper()` and it is called every time `map()` is used.
+
+Given character, numeric or list input, `as_mapper()` will create an extractor function. A character selects by name, a numeric selects by positions, and a list allows for a mixture of these two approaches. This extractor interface can be very useful, when working with nested data.
+
+The extractor function is implemented as a call to `purrr::pluck()`, which accepts a list of accessors (accessors “access” some part of your data object).
+
+```{r}
+as_mapper(.f = c(1, 2)) # equivalent to function(x) x[[1]][[2]]
+as_mapper(.f = c("a", "b")) # equivalent to function(x) x[["a"]][["b]]
+as_mapper(.f = list(1, "b")) # equivalent to function(x) x[[1]][["b]]
+```
+Besides mixing positions and names, it is also possible to pass along an accessor function. **This is basically an anonymous function that gets information about some aspect of the input data.** You are free to define your own accessor functions.
+
+If you need to access certain attributes, the helper `attr_getter(attr)` is already predefined and will create the appropriate accessor function for you.
+
+```{r}
+# Define custom accessor function
+get_class <- function(x) attr(x = x, which = "class")
+pluck(.x = mtcars, get_class)
+# Use attr_getter() as a helper
+pluck(.x = mtcars, attr_getter(attr = "class"))
+```
+
+---
+
+### Exercise 2
+
+`map(1:3, ~ runif(2))` is a useful pattern for generating random numbers, but `map(1:3, runif(2))` is not. Why not? Can you explain why it returns the result that it does?
+
+```{r}
+# Generate a list where each element is a random double vector
+list1 <- purrr::map(.x = 1:3, .f = ~ runif(n = 2))
+list1
+# Type
+typeof(pluck(.x = list1, 1))
+```
+
+This first pattern creates multiple random numbers, because ~ runif(n = 2) successfully uses the formula interface. Internally `map()` applies the function `as_mapper()` to this formula, which converts ~ runif(n = 2) into an anonymous function. Afterwards `runif(n = 2)` is applied three times (one time during each iteration), leading to three different pairs of realized uniformly distributed random variables. The following code does not work:
+
+```{r}
+# This does not work
+list2 <- purrr::map(.x = 1:3, .f = runif(n = 2))
+list2
+```
+
+This is because the input `runif(n = 2)` is not a **valid function** to the argument ".f" of `map()`. `runif(n = 2)` is evaluated once before the results are passed to `map()`. Consequently `as_mapper()` creates an extractor function based on the returned values from `runif(n = 2)` (via `pluck()`). This leads to three NULLs (`pluck()`’s .default return), because no values corresponding to the index can be found.
+
+```{r}
+# Successful conversion of the function
+as_mapper(.f = ~ runif(n = 2))
+# This fails to work since pluck() is used
+# Consider runif( n = 2)[[1]] as "k" and runif( n = 2)[[2]] as "w"
+# The code below is equivalent to x[[k]][[w]]
+# Obviously, those indices do not exist and so NULLs are returned
+as_mapper(.f = runif(n = 2))
+```
+
+---
+
+### Exercise 3
+
+* Compute the standard deviation of every column in a numeric data frame:
+
+```{r}
+purrr::map_dbl(.x = mtcars, .f = sd)
+```
+
+* Compute the standard deviation of every numeric column in a mixed data frame (Hint: you’ll need to do it in two steps):
+
+```{r}
+# Load data
+data("BirdNest")
+# Determine indices of the numeric variables
+index_numeric <- purrr::map_lgl(.x = BirdNest, .f = is.numeric)
+# Subset and compute sd
+purrr::map_dbl(.x = BirdNest[index_numeric], .f = sd)
+```
+
+* Compute the number of levels for every factor in a data frame:
+
+```{r}
+# Determine indices of the factors
+index_factor <- purrr::map_lgl(.x = BirdNest, .f = is.factor)
+# Subset and compute number of levels
+# Anonymous function
+purrr::map_int(
+  .x = BirdNest[index_factor],
+  .f = ~ length(levels(.x))
+)
+# This is equivalent to
+purrr::map_int(
+  .x = BirdNest[index_factor],
+  .f = function(x) length(levels(x))
+)
+```
+
+---
+
+### Exercise 4
+
+The following code simulates the performance of a t-test for **non-normal** data. Extract the p-value from each test, then visualize.
+
+```{r}
+# Simulates the power of t-test over 100 iterations
+trials <- purrr::map(
+  .x = 1:100,
+  .f = ~ t.test(
+    x = rpois(n = 10, lambda = 10),
+    y = rpois(n = 10, lambda = 7)
+  )
+)
+# Each element of the list "trials" is a sub-list of the results of the t.test() function
+# The p.val can be extracted as follows
+trials[[1]][["p.value"]]
+# Using the shortcut for extracting elements by name powered by pluck()
+# This is equivalent to trials[[i]][["p.value"]]
+p_vals <- purrr::map_dbl(.x = trials, .f = "p.value")
+# Compute power
+power <- sum(p_vals < 0.05) / 100
+power
+```
+
+The power of the two sample t test is 0.6, which is not great. We expect this since we are dealing with non-normal data, where the power of the test is diminished.
+
+```{r}
+# Visualize
+ggplot(mapping = aes(x = p_vals, fill = p_vals < 0.05)) +
+  geom_dotplot(binwidth = .01) + # geom_histogram() as alternative
+  theme(
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    legend.position = "top"
+  )
+```
+
+---
+
+### Exercise 5
+
+The following code uses a map nested inside another map to apply a function to every element of a nested list. Why does it fail, and what do you need to do to make it work?
+
+```{r, eval=FALSE}
+x <- list(
+  list(1, c(3, 9)),
+  list(c(3, 6), 7, c(4, 7, 6))
+)
+triple <- function(x) x * 3
+map(x, map, .f = triple)
+```
+
+This function call fails, because triple() is specified as the .f argument and consequently belongs to the outer map(). The unnamed argument map is treated as an additional argument of triple() passed on via ..., which causes the error. There are a number of ways we could resolve the problem. However, there is not much to choose between them for this simple example, although it is good to know your options for more complicated cases:
+
+* Don't name the argument:
+
+```{r}
+# Nested list
+x <- list(
+  list(1, c(3, 9)),
+  list(c(3, 6), 7, c(4, 7, 6))
+)
+# Function
+triple <- function(x) x * 3
+# Solution 1
+purrr::map(.x = x, .f = map, triple)
+```
+
+This way each call of `map()` inside of the outer `map()` is essentially `map(.x = x[[i]], .f = triple)`, where `triple` is passed to the inner `map()` as the second argument, i.e. (.f), via an additional argument ...
+
+* Use magrittr-style or purrr-style anonymous function:
+
+```{r}
+# Use magrittr-style anonymous function
+map(.x = x, .f = . %>% map(.f = triple))
+# Use purrr-style anonymous function
+map(.x = x, .f = ~ map(.x = .x, .f = triple))
+# Or
+map(.x = x, .f = ~ map(.x = ., .f = triple))
+# These two approaches are all equivalent to
+map(
+  .x = x,
+  .f = function(sub_list) map(.x = sub_list, .f = triple)
+)
+```
+
+Here, the 1) "." in the magrittr-style anonymous function and the 2) ".x" in the purrr-style anonymous function are both used as placeholders for "sub_list". The magrittr-style anonymous function passes the placeholder for x[[i]] as the first argument of `map(.x = placeholder, .f = triple)` using the ` %>% ` operator. The purrr-style anonymous function uses the helper twiddle to convert the formula into a valid function.
+
+---
+
+### Exercise 6
+
+Use `map()` to fit linear models to the mtcars data set using the formulas stored in this list:
+
+```{r}
+# List of formulas
+formulas <- list(
+  mpg ~ disp,
+  mpg ~ I(1 / disp),
+  mpg ~ disp + wt,
+  mpg ~ I(1 / disp) + wt
+)
+# Type of each element
+# A "language" is an R language construct
+purrr::map(.x = formulas, .f = typeof)
+# Fit linear models
+linear_models <- purrr::map(.x = formulas, .f = lm, data = mtcars)
+linear_models[[1]]
+# Summary
+linear_models_summary <- purrr::map(
+  .x = formulas,
+  .f = ~ summary(
+    object = lm(
+      formula = .x,
+      data = mtcars
+    )
+  )
+)
+linear_models_summary[[2]]
+```
+
+---
+
+### Exercise 7
+
+Fit the simply linear regression model mpg ~ disp to each of the bootstrap replicates of mtcars in the list below, then extract the $R^{2}$ of the model fit:
+
+```{r}
+# Bootstrap function
+bootstrap <- function(df) {
+  # Sub-set as matrix
+  # The data.frame structure is preserved
+  df[sample(x = nrow(x = df), replace = TRUE), , drop = FALSE]
+}
+# 10 bootstrap replicates of mtcars
+# Each element in "bootstraps" is a replicate data.frame of the original data.frame
+bootstraps <- map(.x = 1:10, .f = ~ bootstrap(df = mtcars))
+# Single [ returns a list, simplifying the data.frame to a list
+is.data.frame(bootstraps[1])
+# Double [[ returns a data.frame, preserving the structure
+is.data.frame(bootstraps[[2]])
+```
+
+Here, the input vector needs to be the second argument of `lm(formula, data)`, and so we use an anonymous function:
+
+```{r}
+# List of models
+models <- purrr::map(
+  .x = bootstraps,
+  .f = ~ summary(lm(formula = mpg ~ disp, data = .x))
+)
+models[[1]]
+# Extract R squares
+vector_of_rsquare <- purrr::map_dbl(
+  .x = models,
+  .f = "r.squared"
+)
+vector_of_rsquare
+```
+
+---
+
+All the above can be chained together elegantly using the pipe operator:
+
+```{r}
+bootstraps %>%
+  map(.f = ~ lm(mpg ~ disp, data = .x)) %>%
+  map(.f = summary) %>%
+  map_dbl(.f = "r.squared")
+```

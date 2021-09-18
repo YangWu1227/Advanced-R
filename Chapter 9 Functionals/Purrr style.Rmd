@@ -1,0 +1,96 @@
+---
+title: "Purrr style"
+author: "Ken Wu"
+date: "7/26/2021"
+output:
+  bookdown::html_document2:
+    toc: true
+    toc_float: true
+    number_sections: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(collapse = TRUE)
+knitr::opts_chunk$set(comment = NA)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(fig.width = 6, fig.height = 4, fig.align = "center")
+library(tidyverse)
+options(digits = 7)
+```
+
+## Purrr style
+
+1. Split `mtcars` data set into groups defined by the number of cylinders, using `split(x, f, drop = FALSE, ...)`, which divides the data in x (a vector or data frame) into subsets defined by f (factor). The argument drop accepts a logical vector of length 1 indicating if levels that do no occur in the factor should be dropped.
+
+```{r}
+by_cyl <- split(x = mtcars, f = as_factor(x = mtcars[["cyl"]]), drop = FALSE)
+by_cyl[[2]]
+```
+
+Another way to subset the data is using `tidyr::nest(.data, ..., .names_sep = NULL)`, which creates a list-column of data frames called nested data-frames.
+
+```{r}
+by_cyl_tidyr <- mtcars %>%
+  group_by(cyl) %>%
+  nest()
+glimpse(by_cyl_tidyr)
+```
+
+2. This creates a list of three data frames: cars with 4, 6, and 8 cylinders. The following code regresses mpg on weight using each subset of data, extracts the estimator of the parameter on weight:
+
+```{r}
+# Could use .x or . in the anonymous function
+by_cyl %>%
+  map(.f = ~ lm(mpg ~ wt, data = .x)) %>%
+  # Pluck by name and position
+  # We can do this since the the map() above returns a list
+  # We pluck the elements named "coefficients" and select the second elements of those vectors
+  map_dbl(.f = list("coefficients", 2))
+```
+
+---
+
+## Base R style
+
+* With pipe operator
+
+```{r}
+by_cyl %>%
+  lapply(FUN = function(subset) lm(mpg ~ wt, data = subset)) %>%
+  lapply(FUN = "coefficients") %>%
+  vapply(FUN = function(x) x[[2]], FUN.VALUE = double(1))
+```
+
+* Without pipe operator
+
+```{r}
+# Use intermediate variables
+list_of_models <- lapply(
+  X = by_cyl,
+  FUN = function(subset) lm(mpg ~ wt, data = subset)
+)
+# Extract estimators
+vapply(
+  X = list_of_models,
+  FUN = function(model) model[["coefficients"]][[2]],
+  FUN.VALUE = double(1)
+)
+```
+
+---
+
+## for loop
+
+```{r}
+# Pre-allocate container
+estimators <- vector(mode = "double", length = length(x = by_cyl))
+# For loop
+for (i in seq_along(along.with = by_cyl)) {
+  model <- lm(mpg ~ wt, data = by_cyl[[i]])
+  estimators[[i]] <- pluck(.x = model, "coefficients", 2)
+}
+# Output
+estimators
+```
