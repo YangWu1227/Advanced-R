@@ -192,7 +192,35 @@ l2[[3]] <- 4
 ref(l1, l2)
 ```
 
-A list stores the values of each element and the references/bindings to those values. When an element in a list is modified, a **shallow** modified copy is created. That is, the list object and its bindings are copied, but the values pointed to by the bindings are not copied. The opposite is a deep copy, which, prior to R 3.1.0, copies were always deep copies. As can be seen, the values(1 and 2) bound by the first two elements of both lists are not copied; both lists share these values. For the third element of l2, a new object is created for the value(4) it binds. Now, there are a total of four values/objects with four unique "addresses."
+A list stores the values of each element and the references/bindings to those values. When an element in a list is modified, a **shallow** modified copy is created. That is, the list object and its bindings are copied, but the value objects pointed to by the bindings are not copied. The opposite is a deep copy, which, prior to R 3.1.0, copies were always deep copies. As can be seen, the values(1 and 2) bound by the first two elements of both lists are not copied; both lists share these values. For the third element of l2, a new object is created for the value(4) it binds. Now, there are a total of four values/objects with four unique "addresses."
+
+---
+
+### Why should we pre-allocate output containers when iterating?
+
+Examine the example below. Using `c()`, `append()`, `cbind()`, `rbind()`, `paste()`, or modifying an object using `x[[i]] <- y` can create copies in a for loop. 
+
+```{r}
+# Instantiate an empty list
+y <- list()
+# For loop
+for (i in 1:10) {
+  y[[i]] <- i
+  cat(lobstr::obj_addr(y), "\n")
+}
+```
+
+As can be seen,  in each iteration, R creates a new copy and rebind y to the new modified object. This pattern holds for other types of operations such as `y <- append(y, i)`. This is because R must first allocate space for the new object and then copy the old object to its new home. This will be quite expensive when the number of iterations is high. However, if we pre-allocate an output container, we can avoid the copying behavior:
+
+```{r}
+# Pre-allocate empty container
+y <- vector(mode = "list", length = 10)
+# For loop
+for (i in seq_along(y)) {
+  y[[i]] <- i
+  cat(lobstr::obj_addr(y), "\n")
+}
+```
 
 ---
 

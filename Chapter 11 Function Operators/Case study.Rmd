@@ -1,0 +1,311 @@
+---
+title: "Case study"
+author: "Yang Wu"
+date: "10/2/2021"
+output:
+  bookdown::html_document2:
+    toc: true
+    toc_float: true
+    number_sections: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(comment = NA)
+knitr::opts_chunk$set(warning = FALSE)
+library(purrr)
+library(magrittr)
+options(digits = 4)
+```
+
+# Case study
+
+Suppose there is a named vector of URLs to download from. The simple implementation can be carried out using `walk2()` and `file.download()`: 
+
+```{r}
+# Named vector of URLs
+urls <- c(
+  "adv-r" = "https://adv-r.hadley.nz",
+  "r4ds" = "http://r4ds.had.co.nz/",
+  "ken" = "https://www.kenwuyang.com/en/"
+)
+# Paths
+paths <- paste0(getwd(), "/", names(urls), "_temp.html")
+paths
+# Save html to disk
+walk2(
+  .x = urls,
+  .y = paths,
+  .f = download.file,
+  # Suppress status message passed to download.file()
+  quite = FALSE
+)
+# Remove downloaded files
+file.remove(
+  list.files(pattern = "_temp.html")
+)
+```
+
+This works well but we may wish to add some features:
+
+* Add small delay between each request to avoid hammering the server
+
+* Display a "." every few URLs so we know that the function is still working
+
+It's relatively easy to add these extra features using a for loop:
+
+```{r, eval=FALSE}
+for (i in seq_along(urls)) {
+  Sys.sleep(0.1)
+  # Print a "." every 10 urls
+  if (i %% 10 == 0) cat(".")
+  download.file(url = urls[[i]], destfile = paths[[i]])
+}
+```
+
+Another way to tackle this task is to use function operators. We can create a function operator designed for each specific task--- pausing or showing progress--- making them reusable.
+
+```{r}
+delay_by <- function(f, amount) {
+  # Force evaluate arguments that are only used in the function factory
+  force(f)
+  force(amount)
+
+  # Function factory
+  function(...) {
+    # The value for amount is scoped for in the enclosing env/execution env of delay_by()
+    Sys.sleep(amount)
+    # The value for f is scoped for in the enclosing env/execution env of delay_by()
+    f(...)
+  }
+}
+```
+
+Let us see this function operator in action:
+
+```{r}
+system.time(runif(100))
+system.time(delay_by(runif, 0.1)(100))
+```
+
+We may use this adverb function to modify the `download.file()` function:
+
+```{r, eval=FALSE}
+# Save html to disk
+walk2(
+  .x = urls,
+  .y = paths,
+  # Use the function operator to return a wrapped function that delays download by "amount"
+  .f = download.file %>% delay_by(f = ., amount = 0.1),
+  # Suppress status message passed to download.file()
+  quite = FALSE
+)
+# Remove downloaded files
+file.remove(
+  list.files(pattern = "_temp.html")
+)
+```
+
+To create a function operator that returns a wrapped function that displays progress, we could use a function factory construct that allows the returned function to manage its own internal counter:
+
+```{r}
+dot_every <- function(f, n) {
+  # Force evaluate arguments that are only used in the function factory
+  force(f)
+  force(n)
+
+  # Initialize counter in the execution env of dot_every() or enclosing env of the function factory
+  i <- 0
+  function(...) {
+    # Each time this function factory is called, i in the enclosing env is modified
+    # Each execution env of dot_every() is independent and so "i" is protected there
+    # Notice that i is not in global env, where it can be interfered with, modified, or deleted
+    i <<- i + 1
+    # The value of i is scoped for in the enclosing env/execution env of delay_by()
+    if (i %% n == 0) cat(".")
+    f(...)
+  }
+}
+```
+
+Let us see it in action:
+
+```{r}
+walk(1:100, runif)
+walk(1:100, dot_every(runif, 10))
+```
+
+Finally, we can re-write the original solution as follows:
+
+```{r, eval=FALSE}
+# Save html to disk
+walk2(
+  .x = urls,
+  .y = paths,
+  # Apply function operators to the download.file() function
+  # The function operator names are such that we can read this line of code out loud
+  .f = download.file %>% dot_every(f = ., n = 10) %>% delay_by(f = ., amount = 0.1),
+  # Suppress status message passed to download.file()
+  quite = FALSE
+)
+# Remove downloaded files
+file.remove(
+  list.files(pattern = "_temp.html")
+)
+```
+
+---
+
+# Exercises 
+
+## Exercise 1
+
+Weigh the pros and cons of download.file %>% dot_every(10) %>% delay_by(0.1) versus download.file %>% delay_by(0.1) %>% dot_every(10).
+
+In the first case, first the dot functionality is added to download.file(). Then the delay is added to this already tweaked function. This implies, that the printing of the dot will also be delayed, and the first dot will be printed as soon as the download for the 10th URL starts.
+
+In the latter case the delay is added first and the dot-functionality is wrapped around it. This order will print the first dot immediately after the 9th download is finished, then the short delay occurs before the 10th download actually starts.
+
+---
+
+## Exercise 2
+
+Memoizing `file.download()` will only work if the files are immutable, i.e. if the file at a given URL is always the same. There’s no point memoizing unless this is true. Even if this is true, however, memoize has to store the results in memory, and large files will potentially take up a lot of memory.
+
+This implies that it’s probably not beneficial to memoize `file.download()` in most cases. The only exception is if you are downloading small files many times, and the file at a given URL is guaranteed not to change.
+
+---
+
+## Exercise 3
+
+Create a function operator that reports whenever a file is created or deleted in the working directory, using `dir()` and `setdiff()`. What other global function effects might you want to track?
+
+```{r}
+report <- function(f) {
+
+  # Force evaluate f
+  force(x = f)
+
+  # Function factory
+  function(...) {
+
+    # Files before calling f()
+    files_before <- list.files()
+    # Call function
+    f(...)
+    # Track created or deleted files
+    # Use symmetric difference is expressed as Union (A ∪ B) - Intersection (B ∩ A)
+    files_change <- setdiff(
+      x = union(x = list.files(), y = files_before),
+      y = intersect(x = list.files(), y = files_before)
+    )
+    # Output
+    files_change
+  }
+}
+```
+
+Let us see it in action:
+
+```{r}
+# Modify the file.create() function
+file.create2 <- report(f = file.create)
+# Running the function below will return the name of the newly added file
+file.create2("delete_me")
+# Modify the file.remove() function
+file.remove2 <- report(f = file.remove)
+# Running the function below will return the name of the newly removed file
+file.remove2("delete_me")
+```
+
+---
+
+Another solution involves breaking `x` and `y` in `setdiff(x = union(x = list.files(), y = files_before), y = intersect(x = list.files(), y = files_before))` into two separate objects, which allows us to differentiate which files are added and which are removed:
+
+```{r}
+dir_compare <- function(old, new) {
+  # If the two sets are equal, then return NULL
+  if (setequal(old, new)) {
+    NULL
+  }
+
+  # New files that are added assuming new is a superset of old
+  # That is, all elements of old are at least in new
+  added <- setdiff(new, old)
+  # Removed files assuming that old is a superset of new
+  # That is, all elements of new are in old
+  removed <- setdiff(old, new)
+
+  # Notice the spacing
+  changes <- c(
+    if (length(added) > 0) paste0("Files ", added, " were added"),
+    if (length(removed) > 0) paste0("Files ", removed, " were removed")
+  )
+  message(paste(changes, collapse = "\n"))
+}
+```
+
+Let us see it in actions:
+
+```{r}
+dir_compare(new = c("x", "y"), old = c("x", "y"))
+dir_compare(new = c("x", "y"), old = c("x", "a"))
+```
+
+Next, we place this function in the function operator:
+
+```{r}
+track_dir <- function(f) {
+  force(f)
+  function(...) {
+    dir_old <- dir()
+    # Exit handler
+    on.exit(dir_compare(dir_old, dir()), add = TRUE)
+    f(...)
+  }
+}
+```
+
+Let us see it in action:
+
+```{r}
+file_create <- track_dir(file.create)
+file_remove <- track_dir(file.remove)
+file_create("delete_me")
+file_remove("delete_me")
+```
+
+---
+
+## Exercise 4
+
+Modify `delay_by()` so that instead of delaying by a fixed amount of time, it ensures that a certain amount of time has elapsed since the function was last called. That is, if you called `g <- delay_by(1, f); g(); Sys.sleep(2); g()` there shouldn’t be an extra delay.
+
+```{r}
+delay_atleast <- function(amount, f) {
+  force(f)
+  force(amount)
+  
+  # Store the last time the function was run in the enclosing env of the function factory
+  last_time <- NULL
+  
+  # Return modified "delay-aware" function
+  function(...) {
+    if (!is.null(last_time)) {
+      wait <- (last_time - Sys.time()) + amount
+      if (wait > 0) {
+        Sys.sleep(wait)
+      }
+    }
+    
+    # Update the time in the enclosing environment after the function has finished
+    on.exit(last_time <<- Sys.time()) 
+    
+    f(...)
+  }
+}
+```
+
+
+
+

@@ -53,7 +53,7 @@ class(new_cnd)
 
 ## Exiting handlers
 
-The function `tryCatch(expr, ..., finally)` registers exiting handlers, which allows use to override the default error behavior.
+The function `tryCatch(expr, ..., finally)` registers exiting handlers, which allows us to override the default error behavior.
 
 ```{r}
 # Function
@@ -101,7 +101,7 @@ base::tryCatch(
 )
 ```
 
-The nuance here is that after the condition is signaled, control passes to the the context where `tryCatch()` was called. In other words, the code that throws the error and creates the error condition object is ever run:
+The nuance here is that after the condition is signaled, control is passed to the the context where `tryCatch()` was called. In other words, the code that throws the error and creates the error condition object is never run:
 
 ```{r}
 tryCatch(
@@ -126,7 +126,7 @@ tryCatch(
 )
 ```
 
-In the code above, `base::stop("This is an error", call. = FALSE)` creates a condition object which is passed to the handler as its single argument, and the control is never return to the code. This is different from `base::withCallingHandler()`, which returns the control to where the condition was signaled and `base::stop("This is an error", call. = FALSE)` is run:
+In the code above, `base::stop("This is an error", call. = FALSE)` creates a condition object which is passed to the handler as its single argument, and the control is never returned to the code. This is different from `base::withCallingHandler()`, which returns the control to where the condition was signaled and `base::stop("This is an error", call. = FALSE)` is run:
 
 ```{r, eval=FALSE}
 withCallingHandlers(
@@ -160,7 +160,7 @@ Exiting and calling handlers use "handlers" in different ways:
 
 * Exiting handlers cause code to exit once the condition object has been created and passed to the handler function.
 
-* Calling handlers returns control to the context of where the condition object was created and the code continues normally. This makes calling handlers work well with non-error conditions.
+* Calling handlers return control to the context of where the condition object was created and the code continues normally. This makes calling handlers work well with non-error conditions.
 
 The example below demonstrates the difference:
 

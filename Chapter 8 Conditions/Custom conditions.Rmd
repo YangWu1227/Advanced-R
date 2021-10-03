@@ -1,0 +1,201 @@
+---
+title: "Custom conditions"
+author: "Yang Wu"
+date: "9/25/2021"
+output:
+  bookdown::html_document2:
+    toc: true
+    toc_float: true
+    number_sections: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(comment = NA)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(fig.width = 6, fig.height = 4, fig.align = "center")
+library(rlang)
+library(testthat)
+options(digits = 4)
+```
+
+# Custom connditions
+
+We can create a custom `abort()` function for invalid arguments. 
+
+```{r}
+abort2 <- function(arg, valid_arg_type, invalid_arg = NULL) {
+
+  # User facing message about what a valid argument should be
+  msg <- glue::glue("The argument {arg} must be of the type {valid_arg_type}")
+
+  # Also provide the type of the invalid arg instead of just saying what a valid one should be
+  # The expression !is.null(x = not) == TRUE when the argument "null" is supplied a value
+  if (!is.null(x = invalid_arg)) {
+    # Store the type of the invalid arg
+    invalid_type <- typeof(invalid_arg)
+    # User facing message about what the argument should not be
+    # Combine this with the message created above
+    msg <- glue::glue("{msg} and not of the type {invalid_type}")
+  }
+
+  # Store meta data in the condition call
+  abort(
+    # The name of the error type
+    "error_invalid_argument_type",
+    # User facing message
+    message = msg,
+    # Custom meta data about the error
+    arg = arg,
+    valid_arg_type = valid_arg_type,
+    invalid_arg_type = invalid_type
+  )
+}
+```
+
+Create a new `log()` function:
+
+```{r}
+new_log <- function(x, base = exp(x = 1)) {
+
+  # If the x argument is invalid
+  if (!is.numeric(x = x)) {
+    abort2(arg = "x", valid_arg_type = "numeric", invalid_arg = x)
+  }
+  # If the base argument is invalid
+  if (!is.numeric(x = base)) {
+    abort2(arg = "base", valid_arg_type = "numeric", invalid_arg = base)
+  }
+
+  # No error
+  log(x = x, base = base)
+}
+```
+
+Test:
+
+```{r,eval=FALSE}
+new_log(x = "2", base = exp(1))
+trace_back()
+# Error: The argument x must be of the type numeric and not of the type character
+```
+
+We can catch the condition object, which contains more information:
+
+```{r}
+# Catch condition object
+cnd <- catch_cnd(
+  expr = new_log(x = 4, base = "exp(1)"),
+  classes = "condition"
+)
+# Examine the object
+str(cnd)
+```
+
+As can be seen, the condition object contains meta data including the user facing message `$ message`, the argument that is invalid `$ arg`, the valid argument type `$ valid_arg_type`, and the invalid argument type `$ invalid_arg_type`. The class attribute is a character vector that includes the custom error type "error_invalid_argument_type". We could use the `testthat` package to test that the condition object has the structure we expect it to have:
+
+```{r}
+# Check if condition object is of s3 class with "error_invalid_argument_type" as its class attribute
+(expect_s3_class(object = cnd, class = "error_invalid_argument_type"))
+# Check if the problematic argument in the meta data is indeed the "base" argument
+(expect_equal(object = cnd[["arg"]], expected = "base"))
+# Check if the invalid argument type in the meta data is indeed of the type "character"
+(expect_equal(object = cnd[["invalid_arg_type"]], expected = "character"))
+```
+
+These functions returns invisible values and so we embrace them in `()`.
+
+---
+
+# Exercises
+
+## Exercise 1
+
+Inside a package, it’s occasionally useful to check that a package is installed before using it. Write a function that checks if a package is installed (with requireNamespace("pkg", quietly = FALSE)) and if not, throws a custom condition that includes the package name in the metadata:
+
+```{r}
+is_package_installed <- function(pkg) {
+
+  # Check valid argument type and length
+  if (typeof(pkg) != "character" && length(pkg) != 1) {
+    abort(message = "The argument pkg must be a length-1 character vector")
+  }
+
+  # Check if package is installed
+  # The expression evaluates to TRUE if the package is not installed
+  if (requireNamespace(package = pkg, quietly = TRUE) == FALSE) {
+
+    # Custom condition object
+    abort(
+      "package_not_installed",
+      message = glue::glue("The package '{pkg}' is not installed"),
+      pkg_name = pkg
+    )
+  } else {
+    glue::glue("The package '{pkg}' is installed")
+  }
+}
+```
+
+Let us see it in action:
+
+```{r}
+# This package is installed
+is_package_installed("tidyverse")
+# This package is not installed so capture the condition object
+cnd <- catch_cnd(expr = is_package_installed("PAC"), classes = "condition")
+str(cnd)
+```
+
+Examine the condition object using `testthat`:
+
+```{r}
+# Check if condition object is of s3 class with "package_not_installed" as its class attribute
+(expect_s3_class(object = cnd, class = "package_not_installed"))
+# Check if the package name is indeed in the meta data
+(expect_equal(object = cnd[["pkg_name"]], expected = "PAC"))
+```
+
+---
+
+Another solution:
+
+```{r}
+check_installed <- function(pkg) {
+  if (!requireNamespace(package = pkg, quietly = TRUE)) {
+    abort(
+      "package_not_installed",
+      message = paste0("package '", pkg, "' not installed."),
+      pkg_name = pkg
+    )
+  }
+
+  # Return True if package is installed
+  TRUE
+}
+```
+
+Let test it:
+
+```{r}
+# Package is is installed
+check_installed(pkg = "tidyquant")
+# Create condition object
+cnd <- catch_cnd(expr = check_installed("PAC"), classes = "condition")
+str(cnd)
+```
+
+---
+
+## Exercise 2
+
+Inside a package you often need to stop with an error when something is not right. Other packages that depend on your package might be tempted to check these errors in their unit tests. How could you help these packages to avoid relying on the error message which is part of the user interface rather than the API and might change without notice?
+
+Instead of returning an error it might be preferable to throw a customized condition and place a standardized error message inside the metadata. Then the downstream package could check for the class of the condition, rather than inspecting the message. This is exactly what the class attribute does to help standardize the error type:
+
+```{r}
+# Check for error type
+(expect_s3_class(object = cnd, class = "package_not_installed"))
+```
+
+
