@@ -1,0 +1,343 @@
+---
+title: "Basics"
+author: "Yang Wu"
+date: "10/4/2021"
+output:
+  bookdown::html_document2:
+    toc: true
+    toc_float: true
+    number_sections: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(fig.height = 6, fig.width = 7, fig.align = "center")
+library(sloop)
+library(magrittr)
+library(stringr)
+```
+
+# Basics
+
+A class defines a type of object, describing what properties it possesses, how it behaves, and how it relates to other types of objects. Every object must be an instance of some class. An **S3** object is a base type with *at least* a **class** attribute (other attributes may be used to store other data):
+
+```{r}
+# Factor is an S3 vector
+f <- factor(x = c("a", "b", "c"))
+# A factor has a base type integer
+typeof(f)
+# It has a class attribute
+attr(x = f, which = "class", exact = FALSE)
+attr(x = f, which = "levels", exact = FALSE)
+# Or, equivalently
+attributes(x = f)
+```
+
+We can strip the class attribute using `unclass()` which causes the object to lose its special behavior whenever its passed to a generic function:
+
+```{r}
+unclass(x = f)
+```
+
+The **class** of an object is determined by its class attribute, a character vector of class names. The following example shows how to create an object of class `foo`:
+
+```{r}
+# First way
+x <- 1
+attr(x, "class") <- "foo"
+x
+# Or, alternatively
+x <- structure(.Data = 1, class = "foo")
+x
+```
+
+Objects are not limited to a single class, and can have many classes:
+
+```{r}
+# One way to modify
+class(x) <- letters[1:4]
+class(x)
+# Another way to modify class attribute
+attr(x, which = "class") <- c("Ken", "Wu")
+x
+```
+
+An S3 object behaves differently from its underlying base type whenever it is passed to a generic function. Use `sloop::ftype()` to check for generic functions:
+
+```{r}
+ftype(f = print)
+ftype(f = str)
+ftype(f = sum)
+ftype(f = unclass)
+```
+
+A generic function defines an interface, which uses different implementation depending on the class of an argument. The generic has the job of defining the interface (the arguments) before finding the right implementation for the operation. The implementation for a specific class is called a **method**, and the generic finds that method by performing **method dispatch**. This process can be captured using `sloop::s3_dispatch()`:
+
+```{r}
+s3_dispatch(call = print(f))
+```
+
+Note that S3 methods are functions with a special naming scheme `generic.class()`. As can be seen, the method for class `factor` is `print.factor`. Generally, this naming scheme, i.e., the presence of ".", can be used to identify an S3 method. To be sure, use `sloop::ftype()`:
+
+```{r}
+# Generic
+ftype(t.test)
+# S3 methods
+ftype(t.data.frame)
+ftype(print.factor)
+ftype(print.Date)
+```
+
+The function `s3_dispatch()` prints a list of all possible function names that will be considered for method dispatch. There are four possible states:
+
+* => method exists and is found by UseMethod().
+
+* -> method exists and is used by NextMethod().
+
+* `*` method exists but is not used.
+
+* Nothing (and grayed out in console): method does not exist.
+
+Unlike most functions, you can’t see the source code for most S3 methods (except for methods that are found in the base package such as `print` or `t`) just by typing their names. That’s because S3 methods are not usually exported: they live only inside the package, and are not available from the global environment. Instead, use `sloop::s3_get_method()`, which will work regardless of where the method lives:
+
+```{r}
+# S3 methods that can be accessed using sloop
+s3_get_method(name = weighted.mean.Date)
+```
+
+We can find all S3 methods from the base package as follows:
+
+```{r}
+# Get the names of all the base package functions
+objs <- mget(ls(name = "package:base", all.names = TRUE), inherits = TRUE) %>% names()
+# Get all names that returns TRUE using is_s3_method()
+# Use safely in case is_s3_method() fails for one of the function names in "objs"
+# Transpose to get all the results and NULL separately
+s3_methods <- purrr::map(.x = objs, .f = purrr::safely(.f = is_s3_method)) %>% purrr::transpose()
+# Find all results where is_s3_method() failed
+s3_methods_failed <- objs[!purrr::map_lgl(.x = s3_methods[["error"]], .f = is.null)]
+# Find all results where is_s3_method() returns TRUE
+# These are some of the S3 methods in the base package
+s3_methods_worked <- objs[purrr::map_lgl(.x = s3_methods[["result"]], .f = isTRUE)]
+# Get these base S3 methods in a list
+s3_methods_list <- mget(ls(name = "package:base", all.names = TRUE), inherits = TRUE)[s3_methods_worked]
+# Examine the first and last S3 methods
+s3_methods_list[c(1, length(s3_methods_list))]
+```
+
+```{r, echo=FALSE}
+rlang::env_unbind(env = rlang::caller_env(), nms = names(rlang::global_env()))
+```
+
+---
+
+# Exercises
+
+## Exercise 1
+
+Describe the difference between `t.test()` and `t.data.frame()`? When is each function called?
+
+The `t.test()` function is a generic function from the `stats` package:
+
+```{r}
+ftype(f = t.test)
+```
+
+The method dispatch process can be tracked as follows:
+
+```{r}
+s3_dispatch(call = t.test(x = 1:10, y = c(7:20)))
+```
+
+This is the default S3 method used when both `x` and `y` are supplied as numeric vectors. The S3 method for class "formula" is used when the interface is an S3 formula object:
+
+```{r}
+# Create object
+formula_object <- y ~ x
+# Object type
+otype(x = formula_object)
+# Class of this object
+class(x = formula_object)
+# Method dispatch finds the right S3 methods for this object with class "formula"
+# The method is t.test.formula()
+s3_dispatch(call = t.test(extra ~ group, data = sleep))
+```
+
+---
+
+One the other hands, `t.data.frame()` is an S3 method: 
+
+```{r}
+# Function type
+ftype(t.data.frame)
+# Get method
+s3_get_method(name = t.data.frame)
+```
+
+The source code of `t.data.frame()` shows that it uses `NextMethod` which performs method dispatch based on the class(es) of the object supplied as an argument to it.
+
+---
+
+## Exercise 2
+
+Make a list of commonly used base R functions that contain "." in their name but are not S3 methods.
+
+```{r}
+# All base R function names
+base_fn_nms <- mget(x = ls(name = "package:base", all.names = TRUE), inherits = TRUE) %>% names()
+# Detect the presence of "." in function names
+# This function is vectorized and so we do not need to apply it to every element of base_fn_nms
+# The . matches any character so escape . using \ to match . literally
+# The \ itself should also be escaped
+# There are 704 base function with . in their names
+str_detect(string = base_fn_nms, pattern = "\\.", negate = FALSE) %>% sum()
+# Base functions with . in their names
+base_fn_dot_in_nms <- base_fn_nms[str_detect(string = base_fn_nms, pattern = "\\.", negate = FALSE)]
+# From this list of names, get all S3 methods
+s3_methods <- purrr::map(
+  .x = base_fn_dot_in_nms,
+  .f = purrr::safely(.f = is_s3_method)
+) %>% purrr::transpose()
+# Get all elements that worked
+# The index vector is created by finding all results where is_s3_method returns TRUE
+s3_methods_names <- base_fn_dot_in_nms[purrr::map_lgl(.x = s3_methods[["result"]], .f = isTRUE)]
+# Examine the first and last S3 method names
+s3_methods_names[c(1, length(s3_methods_names))]
+```
+
+---
+
+## Exercise 3
+
+What does the `as.data.frame.data.frame()` method do? Why is it confusing? How could you avoid this confusion in your own code?
+
+The `as.data.frame.data.frame()` method is an S3 method where the generic function is `as.data.frame`:
+
+```{r}
+ftype(f = as.data.frame)
+```
+
+And the class of the object that is `data.frame`:
+
+```{r}
+class(x = data.frame())
+```
+
+The method dispatch process is as follows:
+
+```{r}
+# Data frame object
+df <- data.frame()
+# Class
+class(df)
+attr(x = df, which = "class", exact = TRUE)
+# Method dispatch
+s3_dispatch(call = as.data.frame(df))
+```
+
+Here's the object `df` has class `data.frame` and so the S3 naming scheme leads to the confusing name `as.data.frame.data.frame()` for this method. To avoid this, we can use different naming conventions to separate the generic and the class, e.g. `as.data.frame_data.frame()`. 
+
+---
+
+## Exercise 4
+
+Describe the difference in behavior in these two calls.
+
+```{r}
+# Create object
+# This broadcasts the length-5 integer vector onto the length-1 date vector
+# The returned object is a vector of length 5
+# Each element is a date equaling "2017-01-31" plus sample(10, 5)[[i]] number of days
+some_days <- as.Date("2017-01-31") + sample(10, 5)
+# Object type
+otype(x = some_days)
+# Base type
+typeof(x = some_days)
+# Class
+attributes(x = some_days)
+# Function type
+mean %>% ftype()
+# Method dispatch
+s3_dispatch(call = mean(some_days))
+s3_dispatch(call = mean(unclass(some_days)))
+# Results
+mean(some_days)
+mean(unclass(some_days))
+```
+
+As can be seen, when we unclass the object with class `Date`, it behaves differently when passed to the S3 generic function `mean`. Unclassing `some_days` returns the atomic double vector, which uses the `mean.default()` method. When the object with class `Date` is passed to the `mean` function, the method `mean.Date()` is used.  
+
+---
+
+## Exercise 5
+
+What class of object does the following code return? What base type is it built on? What attributes does it use?
+
+```{r}
+# Object
+x <- ecdf(rpois(100, 10))
+x
+# Base type
+# This is a function object
+typeof(x = x)
+# Object type
+# This is an S3 object
+otype(x = x)
+# Class
+attributes(x)
+```
+
+The base type of object `x` is "closure". The object is of the class ecdf (empirical cumulative distribution function) with the super-classes are "stepfun" and are "function". It also has a `call` attribute, which stores the function expression. 
+
+---
+
+## Exercise 6
+
+What class of object does the following code return? What base type is it built on? What attributes does it use?
+
+```{r}
+# Object
+x <- table(rpois(n = 100, lambda = 5))
+x
+# Base type
+# This is a function object
+typeof(x = x)
+# Object type
+# This is an S3 object
+otype(x = x)
+# Class
+attributes(x)
+```
+
+The object has base type `integer` and class `table`. The other attributes are:
+
+* `dimnames` which stores all occured elements in the vector generated by `rpois(n = 100, lambda = 5)` 
+
+* `dim` which stores the number of unique elements that are observed in the vector generated by `rpois(n = 100, lambda = 5)`
+
+---
+
+To understand what is returned by `table()`, i.e., the contingency table, we need to experiment a bit:
+
+```{r}
+# Create a generated vector
+vector <- rpois(n = 100, lambda = 5)
+vector
+# The contingency table returns all unique elements (dimnames) in "vector" and their counts (second row)
+table <- table(vector)
+# The attribute dimnames are the unique elements in "vector"
+attr(x = table, which = "dimnames")
+unique(x = vector) %>% sort()
+# The attribute dim is the length of the unique vector
+attr(x = table, which = "dim")
+unique(x = vector) %>% length()
+# The second row of the contingency table gives the count of each observed unique element
+# The element "4" occurred 16 times
+vector[vector == 4]
+vector[vector == 4] %>% length()
+# The element "9" occurred 5 times
+vector[vector == 9]
+vector[vector == 9] %>% length()
+```

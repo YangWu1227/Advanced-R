@@ -1,0 +1,167 @@
+---
+title: "Base type"
+author: "Yang Wu"
+date: "10/3/2021"
+output:
+  bookdown::html_document2:
+    toc: true
+    toc_float: true
+    number_sections: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(fig.width = 6, fig.height = 4, fig.align = "center")
+library(sloop)
+```
+
+# Introduction
+
+So far, we’ve used the word "object" in the general sense captured by John Chambers’ pithy quote: 
+
+> “Everything that exists in R is an object."
+
+However, while everything is an **object**, not everything is **object-oriented**. This confusion arises because the base objects come from S, and were developed before anyone thought that S might need an OOP system. We’ll use the terms **base objects** and **OO objects** to distinguish them:
+
+```{r, echo=FALSE, fig.cap="Diagram from [Advance R](https://adv-r.hadley.nz/function-factories.html)"}
+knitr::include_graphics(path = "oo_venn.png")
+```
+
+---
+
+# Base versus OO objects
+
+To differentiate between base and OO objects:
+
+* The function `is.object(x)` returns TRUE if the object x has the R internal OBJECT bit set, and FALSE otherwise. The OBJECT bit is set when a "class" attribute is added and removed when that attribute is removed, so this is a very efficient way to check if an object has a class attribute
+
+* The function `otype(x)` tells you if you're dealing with a base, S3, S4, RC, or R6 object
+
+```{r}
+# Base object
+is.object(x = 1:23)
+otype(x = 1:23)
+# OO object
+is.object(x = mtcars)
+otype(x = mtcars)
+```
+
+The technical difference between base and OO objects is that OO objects have a "class" attribute:
+
+```{r}
+# Base objects do not have class attributes
+attr(x = 1:10, which = "class", exact = FALSE)
+# OO objects do have class attributes
+attr(x = mtcars, which = "class", exact = FALSE)
+```
+
+The `class(x)` function is safe when applied to S3 and S4 objects but not base objects. It is safer to use `s3_class(x)`; compared to ``class(x)`, this function always returns the class vector that is used for method dispatch. This is most important for objects where the class attribute has not been set:
+
+```{r}
+# Create a base object
+x <- matrix(data = 1:10, nrow = 5)
+x
+# Check object
+otype(x = x)
+# Class
+class(x = x)
+s3_class(x = x)
+```
+
+---
+
+## Base types
+
+While only OO objects have a class attributes, every object has a base type:
+
+```{r}
+# A base object has a base type integer
+typeof(x = 1:23)
+# A OO object has a base type list
+typeof(x = mtcars)
+```
+
+At the C-level, all R objects are stored in a common datatype, the SEXP, or S-expression. All R objects are S-expressions so every C function that you create must return a SEXP as output and take SEXPs as inputs. (Technically, this is a pointer to a structure with typedef SEXPREC.) A SEXP is a variant type, with subtypes for all R’s data structures.  There are different base types, each with its C type names:
+
+**Vectors**
+
+* NULL (NULLSXP)
+* double (REALSXP) 
+* integer (INTSXP)
+* logical (LGLSXP)
+* character (STRSXP)
+* complex (CPLSXP)
+* raw (RAWSXP)
+* list (VECSXP)
+
+In C, lists are called VECSXPs not LISTSXPs. This is because early implementations of lists were Lisp-like linked lists, which are now known as “pairlists." Character vectors are a little more complicated than the other atomic vectors. A `STRSXP` contains a vector of `CHARSXP`, where each `CHARSXP` points to C-style string stored in a global pool. This design allows individual `CHARSXP` to be shared between multiple character vectors, reducing memory usage. 
+
+**Functions**
+
+* closure (CLOSXP)
+* special (internal functions) (SPECIALSXP)
+* builtin (primitive functions) (BBUILTINSXP)
+
+**Environments**
+
+* environment (ENVSXP)
+
+**S4 type**
+
+* S4 type (S4SXP)
+
+**Language components**
+
+* symbol (SYMSXP)
+* language (LANGSXP)
+* pairlist (LISTSXP)
+* expression (EXPRSXP)
+
+**Esoteric types**
+
+* externalptr (EXTPTRSXP)
+* weakref (WEAKREFSXP)
+* byte-code (BCODESXP)
+* promise (PROMSXP)
+* ... (DOTSXP)
+* any (ANYSXP)
+
+---
+
+## Numeric type
+
+R uses "numeric" to mean slightly different things:
+
+1. In some places numeric is used as an alias for the double type. For example `as.numeric()` is identical to `as.double()`, and `numeric()` is identical to `double()`. (R also occasionally uses real instead of double; NA_real_ is the one place that you’re likely to encounter this in practice.)
+
+2. In the S3 and S4 systems, numeric is used as a shorthand for either `integer` or `double` type, and is used when picking methods:
+
+```{r}
+s3_class(1)
+s3_class(1L)
+```
+
+3. The function `is.numeric()` tests for objects that **behave** like numbers. For example, factors have type “integer” but don’t behave like numbers (i.e. it doesn’t make sense to take the mean of factor):
+
+```{r}
+typeof(factor("x"))
+is.numeric(factor("x"))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
