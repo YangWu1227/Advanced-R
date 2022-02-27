@@ -1,0 +1,740 @@
+---
+title: "Creating S3 vector class"
+author: "Yang Wu"
+date: "10/7/2021"
+output:
+  bookdown::html_document2:
+    toc: true
+    toc_float: true
+    number_sections: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(message = TRUE)
+knitr::opts_chunk$set(warning = TRUE)
+knitr::opts_chunk$set(fig.height = 6, fig.width = 7, fig.align = "center")
+library(tidyverse)
+library(vctrs)
+library(sloop)
+library(zeallot)
+```
+
+# Overview
+
+The following simple S3 classes will be explored in this vignette: 
+
+* **Percent**: a double vector that prints as a percentage. This illustrates the basic mechanics of class creation, coercion, and casting.
+
+* **Decimal**: a double vector that always prints with a fixed number of decimal places. This class has an attribute which needs a little extra care in cast and coercion.
+
+* **Cached sum**: a double vector that caches the total sum in an attribute. The attribute depends on the data, so needs extra care.
+
+* **Polynomial**: a list of integer vectors that define polynomials like $1 + x - x^{3}$. Sorting such vectors correctly requires a custom equality method.
+
+---
+
+# Theory of `vctrs`
+
+## Prototype 
+
+Rather than using `class()` and `length()`, `vctrs` has notions of prototype (`vec_ptype_show()`) and size (`vec_size()`). **The idea of a prototype is to capture the metadata associated with a vector without capturing any data.** Unfortunately, the class() of an object is inadequate for this purpose:
+
+* The `class()` doesn’t include attributes. Attributes are important because, for example, they store the levels of a factor and the timezone of a `POSIXct`. You cannot combine two factors or two `POSIXcts` without thinking about the attributes.
+
+* The `class()` of a matrix is “matrix” and doesn’t include the type of the underlying vector or the dimensionality.
+
+Instead, `vctrs` takes advantage of R’s vectorised nature and uses a **prototype**, a 0-observation slice of the vector (this is basically x[0] but with some subtleties). A prototype of a vector object is a miniature version of the vector that contains all of the attributes but none of the data.
+
+Conveniently, we can create many prototypes using existing base functions (e.g, `double()` and `factor(levels = c("a", "b"))`). And the `vctrs` package provides a few helpers (e.g. `new_date()`, `new_datetime()`, and `new_duration()`) where the equivalents in base R are missing.
+
+---
+
+## Size
+
+The function `vec_size()` was motivated by the need to have an invariant that describes the number of “observations” in a data structure. This is particularly important for data frames, as it’s useful to have some function such that `f(data.frame(x))` equals `f(x)`. No base function has this property:
+
+* `length(data.frame(x))` equals 1 because the length of a data frame is the number of columns.
+
+* `nrow(data.frame(x))` does not equal `nrow(x)` because `nrow()` of a vector is NULL.
+
+But `NROW(data.frame(x))` equals `NROW(x)` for vector x, so it is almost what we want. But because `NROW()` is defined in terms of `length()`, it returns a value for every object, even types that can’t go in a data frame, e.g. `data.frame(mean)` errors even though `NROW(mean)` is 1.
+
+We define `vec_size()` as follows:
+
+* It is the length of 1d vectors.
+
+* It is the number of rows of data frames, matrices, and arrays.
+
+* It throws errors for non vectors.
+
+Given `vec_size()`, we can give a precise definition of a data frame: **a data frame is a list of vectors where every vector has the same size**. This has the desirable property of trivially supporting matrix and data frame columns.
+
+---
+
+## Generic function vec_ptype2()
+
+The coercion mechanism in `vctrs` are handled by two important functions `vec_ptype2()` and `vec_cast()`. Methods for `vec_ptype2()` are passed two prototypes, i.e. two inputs emptied of their elements. These methods implement two behaviors: 
+
+* If the types of the inputs to these methods are compatible, indicate which of them is the *richer* type by returning it. If the types are of equal resolution, return any of the two.
+
+* Throw an error with `stop_incompatible_type()` when it can be determined from the attributes that the types of the inputs are not compatible.
+
+---
+
+## Type compatibility
+
+A type is compatible with another type if the values *it represents are a subset or a super-set of the values of the other type*. The notion of “value” is to be interpreted at a high level; in particular, it is not the same as the memory representation. For example, factors are represented in memory as integers but their values are more related to character vectors than to numbers:
+
+```{r}
+# Two factors are compatible and so factor(0) is returned
+vec_ptype2(factor("a"), factor("b"))
+# Factors are compatible with a character and the richer type is returned
+vec_ptype2(factor("a"), "b")
+```
+
+On the other hand, factors are not compatible with integers:
+
+```{r, eval=FALSE}
+# Error: Can't combine <factor<4d52a>> and <integer>.
+vec_ptype2(factor("a"), 1L)
+```
+
+---
+
+## Richness of type
+
+Richness of type is not a precise notion. It can be about richer data (for instance a double vector covers more values than an integer vector), richer behavior (a `data.table` has richer behavior than a `data.frame`), or both. If it is difficult to determine which one of the two input types is richer, it probably means they shouldn’t be automatically coercible:
+
+```{r}
+vec_ptype2(factor("a"), "b")
+```
+
+The `ptype2` method for `<character>` and  `<factor<"a">>` returns <character> because the former is the richer type. The factor can only contain "a" strings, whereas the character can contain any strings. In this sense, factors are a subset of character. Another valid behavior would be to throw an incompatible type error. This is what a strict factor implementation would do. Hadley and his team decided to relax the restrictions since it is easy to inadvertently create factors instead of character vectors.
+
+---
+
+## Consistency and symmetry on permutation
+
+Each ptype2 method should strive to have exactly the same behavior when the inputs are permuted. This is not always possible, for example factor levels are aggregated in order:
+
+```{r}
+vec_ptype2(factor(c("a", "c")), factor("b"))
+vec_ptype2(factor("b"), factor(c("a", "c")))
+```
+
+In any case, permuting the input should not return a fundamentally different type or introduce an incompatible type error.
+
+---
+
+## Coercion hierarchy
+
+Coercible classes form a coercion (or sub-typing) hierarchy. Below is a simplified diagram of the hierarchy for base types. In this diagram, the directions of the arrows show us which type is richer. These arrows flow from the bottom (more constrained types) to the top (richer types). 
+
+```{r,echo=FALSE}
+knitr::include_graphics("coerce.png")
+```
+
+As class implementers, we can integrate our own class in this existing hierarchy, either by adding parent nodes on top of the hierarchy (meaning our class is richer), by adding children node at the root of the hierarchy (indicating our class is more constrained), or by inserting a node in the tree.
+
+---
+
+## Generric function vec_cast()
+
+The function `vec_cast()` has three possible behaviors:
+
+* Determine that the prototypes of the two inputs are not compatible. This must be decided in exactly the same way as for `vec_ptype2()`. Call `stop_incompatible_cast()` if we can determine from the attributes that the types are not compatible.
+
+* Detect incompatible values. Usually this is because the target type is too restricted for the values supported by the input type. For example, a fractional number can’t be converted to an integer. The method should throw an error in that case.
+
+* Return the input vector converted to the target type if all values are compatible. Whereas `vec_ptype2()` must return the same type when the inputs are permuted, `vec_cast()` is directional. It always returns the type of the right-hand side, or throws an error trying.
+
+---
+
+## Double dispatch
+
+The dispatch mechanism for `vec_ptype2()` and `vec_cast()` looks like S3 but is actually a custom mechanism. Compared to S3, it has the following differences:
+
+* It dispatches on the classes of the first two inputs--- `x` and `y` for `vec_ptype2()` and `x` and `to` for `vec_cast()`
+
+* There is no inheritance of ptype2 and cast methods. This is because the S3 class hierarchy is not necessarily the same as the coercion hierarchy.
+
+* `NextMethod()` does not work. Parent methods must be called explicitly if necessary.
+
+* The default method is hard-coded.
+
+## Data frames
+
+The determination of the common type of data frames with `vec_ptype2()` happens in three steps:
+
+1. Match the columns of the two input data frames. If some columns don’t exist, they are created and filled with adequately typed `NA` values.
+
+2. Find the common type for each column by calling `vec_ptype2()` on each pair of matched columns.
+
+3. Find the common data frame type. For example the common type of a grouped tibble and a tibble is a grouped tibble because the latter is the richer type. The common type of a data table and a data frame is a data table.
+
+The generic `vec_cast()` operates similarly. If a data frame is cast to a target type that has fewer columns, this is an error since `vec_cast()` is directional.
+
+---
+
+# Percent class
+
+## Constructor
+
+Objects of class `percent` are built on double vectors of any length and do not have any attributes. We can create a `constructor` for this class as follows:
+
+```{r}
+new_percent <- function(x = double()) {
+  # Check base type
+  vec_assert(x, ptype = double())
+  structure(
+    .Data = x,
+    class = "vctrs_percent"
+  )
+}
+```
+
+Let us create an instance of this class:
+
+```{r}
+# Instantiate an object of the class
+x <- new_percent(x = c(seq(from = 0, to = 1, length.out = 4), NA))
+x
+# Class
+attr(x, which = "class")
+# Object type
+otype(x)
+```
+
+The act of prefixing the name of the class with the package name `vctrs` safeguards us from potentially conflicting definitions between packages. 
+
+## Helper
+
+Since this is a rather simple class with no additional attributes, we may not require a `validator`. Below, we create a user-friendly `helper` that uses `vec_cast()` to allow it to create instances of the `percent` class even when the user inputs a type other than a double. The helper accepts any input that is coercible to a double:
+
+```{r}
+percent <- function(x = double()) {
+  # Casting input to double
+  # Return a vector the same length as x with the same type as to = double()
+  x <- vec_cast(x, to = double())
+  # Call constructor
+  new_percent(x)
+}
+```
+
+Check that the user-friendly `constructor` returns a zero-length vector when called with no arguments. This makes it easy to use as a prototype:
+
+```{r}
+new_percent()
+percent()
+```
+
+For the convenience of our users, we may also implement an `is_percent()` function. The function `inherits()` indicates whether its first argument `x` inherits from any of the classes specified in the `what` argument. If `which` is set to TRUE, then an integer vector of the same length as the `what` argument is returned. Each element of this returned integer vector indicates the positions of elements in `class(x)` that are matched by the elements of `what`; zero indicates no match. For example:
+
+```{r}
+# Class
+df <- data.table::data.table()
+class(df)
+# Inheritance
+inherits(df, what = c("type", "data.table", "python", "data.frame"), which = TRUE)
+```
+
+* The returned integer vector has the same length as `what`. The *first* element of `class(df)` is "data.table" and it is not matched by the first and third elements of `what`; therefore, in the returned integer vector, the first and third elements are zeros. This element is matched by the second element of `what`, and so the returned integer has the index `1` as its second element. 
+
+* The *second* element of `class(df)` is "data.frame" and it is matched by the fourth element of `what`; therefore, the returned integer vector has the index `2` as its fourth element. The index `2` indicates that this element is the second element of the `class(df)` vector.
+
+If `which` is FALSE then TRUE is returned by inherits if any of the names in `what` matches with any of the values in `class(x)`.
+
+```{r}
+x
+# Inherits from "vctrs_percent"
+inherits(x, what = "vctrs_percent", which = TRUE)
+# Inherits from "vctrs_percent"
+inherits(x, what = "vctrs_percent", which = FALSE)
+# Do not inherit from "vctrs_percent"
+inherits(c(3, 2), what = "vctrs_percent", which = TRUE)
+# Do not inherit from "vctrs_percent"
+inherits(c(3, 2), what = "vctrs_percent", which = FALSE)
+```
+
+Use this function to create the test:
+
+```{r}
+is_percent <- function(x) {
+  inherits(x, what = "vctrs_percent", which = FALSE)
+}
+```
+
+Test:
+
+```{r}
+x %>% is_percent()
+```
+
+---
+
+## The format() method
+
+The first method for every class should almost always be a `format()` method. For the `percent` class, this should return a character vector the same length as the input `x`. The generic `format()` already has many methods defined for many classes: 
+
+```{r}
+# Is a generic
+ftype(f = format)
+# Find all methods defined for this generic
+s3_methods_generic(x = "format") %>% psych::headTail()
+# There is currently no method for the percent class
+"vctrs_percent" %in% s3_methods_generic(x = "format")$class
+```
+
+The easiest way to create this `format()` method is to rely on one of R’s low-level formatting functions like `formatC()`, which formats numbers individually and flexibly using C style format specifications. The function `vec_data()` extract the data underlying an S3 vector object, i.e. the underlying (named) atomic vector, data frame, or list. Lastly, for `signif()`, the recognized values of digits are 1...22 decimal places, and non-missing values are rounded to the nearest integer in that range for decimal places.
+
+```{r}
+format.vctrs_percent <- function(x, ...) {
+  # The function formatC() takes the double vector x and format it to a character vector
+  out <- formatC(x = signif(vec_data(x) * 100, 3))
+  # Set missing values to NA
+  out[is.na(x)] <- NA
+  # Attach % symbol to non-missing values
+  out[!is.na(x)] <- paste0(out[!is.na(x)], "%")
+  out
+}
+```
+
+Let us see it in action:
+
+```{r}
+# Dispatch
+s3_dispatch(call = format(x))
+# Format
+format(x)
+# See method
+s3_methods_generic("format") %>% filter(class == "vctrs_percent")
+```
+
+For whatever reason, however, the function `formatC()` discards any class and so using it coerces our input `x` to a character vector. We lose the class attribute of our object:
+
+```{r}
+format(x) %>% class()
+```
+
+This is problematic as we cannot call the format method on our object. This would need some investigation. For optimal display, Hadley also recommends defining an abbreviated type name, which should be 4-5 letters for commonly used vectors.
+
+```{r}
+# Generic
+ftype(f = vec_ptype_abbr)
+# Define method for displaying an abbreviated vector type string
+vec_ptype_abbr.vctrs_percent <- function(x, ...) {
+  "prcnt"
+}
+```
+
+---
+
+# Casting and coercion
+
+The next set of methods are coercion and casting methods. Coercion and casting are two sides of the same coin: changing the prototype of an existing object. When the change happens implicitly (e.g in c()) we call it **coercion**; when the change happens explicitly (e.g. with as.integer(x)), we call it **casting**.
+
+One of the main goals of `vctrs` is to put coercion and casting on a robust theoretical footing so it’s possible to make accurate predictions about what, e.g., `c(x, y)` should do when x and y have different prototypes. Therefore, `vctrs` achieves this goal through two **generics**:
+
+* `vec_ptype2(x, y)` defines possible set of coercion. It returns a prototype if x and y can be safely coerced to the same prototype; otherwise it returns an error. The set of automatic coercion is usually quite small because too many tend to make code harder to reason about and silently propagate mistakes.
+
+* `vec_cast(x, to)` defines the possible sets of casts. It returns `x` translated to have prototype `to`, or throws an error if the conversion isn’t possible. The set of possible casts is a superset of possible coercion because they’re requested explicitly.
+
+These two generics implement functional OOP and are responsible for performing method dispatch. Therefore, as we will see below, creating coercion (`vec_ptype2(x, y)`) and casting (`vec_cast(x, to)`) methods for custom classes comes down to defining functions of the following forms:
+
+* `vec_ptype2.class_of_input_x.class_of_input_y` 
+* `vec_cast.class_of_input_x.class_of_input_to` 
+
+## Double dispatch
+
+**Double dispatch** is a special form of multiple dispatch, and a mechanism that dispatches a function call to different concrete functions depending on the types of two objects involved in the call. Both `vec_cast(x, to)` and `vec_ptype2(x, y)` use double dispatch, meaning that the implementation is selected based on the classes of two arguments, not just one. S3 does not natively support double dispatch, so Hadley's team implemented their own dispatch mechanism. In practice, this means:
+
+* We end up with method names with two classes, like `vec_ptype2.foo.bar()`.
+
+* We don’t need to implement default methods (they would never be called if you do).
+
+* We can’t call `NextMethod()`.
+
+---
+
+# Percent class (more methods)
+
+The function `vec_ptype2()` provides a user friendly error message if the coercion doesn’t exist and makes sure `NA` is handled in a standard way. `NA` is technically a logical vector, but we want to stand in for a missing value of any type:
+
+```{r,eval=FALSE}
+vec_ptype2("bogus", percent())
+```
+
+The above coercion returns the following error:
+
+```{r, eval=FALSE}
+Error in `stop_vctrs()`:
+! Can't combine <character> and <vctrs_percent>.
+Backtrace:
+ 1. vctrs::vec_ptype2("bogus", percent())
+ 2. vctrs `<fn>`()
+ 3. vctrs::vec_default_ptype2(...)
+ 4. vctrs::stop_incompatible_type(...)
+ 5. vctrs:::stop_incompatible(...)
+ 6. vctrs:::stop_vctrs(...)
+Error in stop_vctrs(message, class = c(class, "vctrs_error_incompatible"), :
+```
+
+There is symmetry in terms of coercion results:
+
+```{r}
+# Symmetry between permuted inputs producing same results
+vec_ptype2(percent(), NA)
+vec_ptype2(NA, percent())
+```
+
+By default and in simple cases, an object of the same class is compatible with itself:
+
+```{r}
+vec_ptype2(percent(), percent())
+```
+
+---
+
+## Method for vec_ptype2(): Combining `vctrs_percent` with `vctrs_percent`
+
+However this only works if the attributes for both objects are the same. It is always a good idea to provide an explicit coercion method for the case of identical classes. So we’ll start by saying that a `vctrs_percent` combined with a `vctrs_percent` yields a `vctrs_percent`, which we indicate by returning a prototype generated by the constructor.
+
+```{r}
+vec_ptype2.vctrs_percent.vctrs_percent <- function(x, y, ...) new_percent()
+```
+
+The `vctrs_percent` class does not have any attributes implemented currently. But, in the future, if we try to coerce two `vctrs_percent` objects with different attributes, a single prototype will be returned by the explicit coercion method. 
+
+---
+
+## Method for vec_ptype2(): Combining `percent` and `double`
+
+Next we define methods that force a certain kind of behavior--- combining a `percent` and `double` should yield a `double`, since a double is the richer type. The double dispatch mechanism requires us to refer to the underlying type, `double`, in the method name. If we implemented `vec_ptype2.vctrs_percent.numeric()`, it would never be called:
+
+```{r}
+# Define methods of conversion for class percent
+vec_ptype2.vctrs_percent.double <- function(x, y, ...) double()
+vec_ptype2.double.vctrs_percent <- function(x, y, ...) double()
+# Check
+vec_ptype_show(percent(), double(), percent())
+```
+
+---
+
+## Method for vec_cast(): Casting `vctrs_percent` to `vctrs_percent`
+
+The `vec_ptype2()` methods define which input is the richer type that vctrs should coerce to, while `vec_cast()` performs the coercion. Below, we provide a method to cast a `percent` to a `percent`:
+
+```{r}
+vec_cast.vctrs_percent.vctrs_percent <- function(x, to, ...) x
+```
+
+---
+
+## Method for vec_cast(): Casting `vctrs_percent` to and from `double`
+
+To convert a `double` to a `percent` we use the `percent()` helper. To convert a `percent` to a `double`, we strip the attributes. Again, the double dispatch mechanism requires us to refer to the underlying type, `double`, in the method name.
+
+```{r}
+# Helper percent() uses vec_cast() to coerce input x to double, if possible
+vec_cast.vctrs_percent.double <- function(x, to, ...) percent(x)
+# The function vec_data() extracts the data only
+vec_cast.double.vctrs_percent <- function(x, to, ...) vec_data(x)
+```
+
+We can check if this works with:
+
+```{r}
+# Casting double to percent
+vec_cast(0.5, percent())
+# Casting percent to double
+vec_cast(percent(0.5), double())
+```
+
+Try the formatting method on the new object that has been casted from `double` to `percent`:
+
+```{r}
+# Cast from double to percent
+new_instance <- vec_cast(0.5, percent())
+# Call formatting method
+format(new_instance)
+# Calling format on the ordinary double vector would have returned
+format(0.5)
+```
+
+---
+
+## Methods for `vec_c()`, `[<-`, and `[[<-`
+
+Once we implement `vec_ptype2()` and `vec_cast()`, we get `vec_c()`, `[<-`, and `[[<-` implementations for free:
+
+```{r}
+# Concatenating percent and double returns a double
+vec_c(percent(0.5), 1) %>% s3_class()
+# Concatenating percent and NA returns a percent
+vec_c(NA, percent(0.5))
+# Create an instance of percent
+x <- percent(c(0.5, 1, 2))
+x
+# Subset and assignment
+x[1:2] <- 2:1
+x
+# Subset and assignment
+x[[3]] <- 0.5
+x
+```
+
+---
+
+## Implementing as_percent()
+
+Again, we may consider providing an `as_percent()` function that makes direct use of the casting method defined in our `vec_cast.vctrs_percent()` methods:
+
+```{r}
+as_percent <- function(x) {
+  vec_cast(x, to = new_percent())
+}
+```
+
+It may be useful to provide conversions that go beyond what’s allowed in casting. For example, we could offer a parsing method for character vectors. In this case, `as_percent()` should be a generic, the default method should cast, and then additional methods should implement more flexible conversion:
+
+```{r}
+# Define generic
+as_percent <- function(x, ...) {
+  UseMethod("as_percent")
+}
+# Define default method
+as_percent.default <- function(x, ...) {
+  vec_cast(x, new_percent())
+}
+# Define s3 methods for character inputs
+as_percent.character <- function(x) {
+  value <- as.numeric(gsub(" *% *$", "", x)) / 100
+  new_percent(value)
+}
+```
+
+---
+
+# Cached sum class
+
+The next level up in complexity is an object that has data-dependent attributes. To explore this idea, we’ll create a vector that caches the sum of its values. As usual, we start with low-level and user-friendly constructors:
+
+```{r}
+# Constructor
+new_cached_sum <- function(x = double(), sum = 0L) {
+  # Check base type
+  vec_assert(x, ptype = double())
+  # Check attribute
+  vec_assert(sum, ptype = double(), size = 1L)
+
+  new_vctr(x, sum = sum, class = "vctrs_cached_sum")
+}
+# Helper
+cached_sum <- function(x) {
+  x <- vec_cast(x, double())
+  new_cached_sum(x, sum(x))
+}
+```
+
+The `new_vctr()` constructor creates an object with class `vctrs_vctr` which has a number of methods. For example:
+
+* The `print()` and `str()` methods are defined in terms of the base function `format()` so we get a pleasant, consistent display as soon as we have implemented our own `format()` method.
+
+* We can immediately put our new vector class in a data frame because `as.data.frame.vctrs_vctr()` does the right thing.
+
+* Subsetting ([, [[, and $), length<-, and rep() methods automatically preserve attributes because they use `vec_restore()`. A default `vec_restore()` works for all classes where the attributes are data-independent, and can easily be customized when the attributes do depend on the data. **See below for an example**.
+
+* Default subset-assignment methods ([<-, [[<-, and $<-) follow the principle that the new values should be coerced to match the existing vector. This gives predictable behavior and clear error messages.
+
+For class `cached_sum`, we can use the default `format()` method; we’ll also customize the `obj_print_footer()` method. This method has three components--- header, data, and footer. The header gives the prototype of the object, the data gives the value of the object, and the footer invisibly returns the object itself.
+
+```{r}
+# Factor object
+f <- factor(letters[1:5], levels = letters[1:5])
+# Print
+obj_print(f)
+# Header
+obj_print_header(f)
+# Data
+obj_print_data(f)
+# Footer
+(obj_print_footer(f))
+```
+
+We can modify the footer as follow:
+
+```{r}
+# Define footer method for our cached_sum class
+obj_print_footer.vctrs_cached_sum <- function(x, ...) {
+  cat("# Sum: ", format(attr(x, which = "sum"), digits = 3), "\n", sep = "")
+}
+# Create an instance of the class
+x <- cached_sum(runif(10))
+# Method dispatch
+s3_dispatch(print(x))
+# Print footer
+s3_dispatch(obj_print_footer(x))
+# Print
+obj_print(x)
+```
+
+We’ll also override `sum()` and `mean()` to use this attribute. This is easiest to do with `vec_math()`. The function `vec_math_base()` is provided as a convenience for writing methods. It calls the base `.fn` on the underlying `vec_data()`. 
+
+```{r}
+# Define method
+vec_math.vctrs_cached_sum <- function(.fn, .x, ...) {
+  # Print a user-facing message to let the user know which method is using
+  cat("Using cache\n")
+  # C switch statement
+  switch(.fn,
+    # If .fn is "sum", just use the attribute
+    sum = attr(.x, "sum"),
+    # If .fn is "mean", divide the attribute by the length of the vector
+    mean = attr(.x, "sum") / vec_size(.x),
+    # If not the former two, then use the base function
+    vec_math_base(.fn, .x, ...)
+  )
+}
+# Test
+sum(x)
+```
+
+One problem we have is that `vctrs` assumes that attributes are independent of the data. In the case of class `cached_sum`, the sum attribute depends on the vector. This means that when we take advantage of the default subsetting methods, they would return the incorrect result--- prints the sum for the entire vector and not the sum of the subsetted vector:
+
+```{r}
+x[1:2]
+```
+
+To fix this, we need to define a `vec_restore.vctrs_cached_sum()` method for our `vctrs_cached_sum` class that the `vec_restore()` generic function can find:
+
+```{r}
+vec_restore.vctrs_cached_sum <- function(x, to, ..., i = NULL) {
+  new_cached_sum(x, sum = sum(x))
+}
+# Check if the method is properly defined for class vctrs_cached_sum
+s3_methods_generic(x = "vec_restore") %>% filter(class == "vctrs_cached_sum")
+# Now the default subsetting method will use `vec_restore`, with our custom method defined, under the hood
+x[1]
+```
+
+This works since most of the `vctrs` methods dispatch to the underlying base function by first stripping off extra attributes with `vec_data()` and then reapplying them again with `vec_restore()`. The default `vec_restore()` method copies over all attributes, which is not appropriate when the attributes depend on the data.
+
+# Polynomial class
+
+The **constructor**:
+
+```{r}
+# Constructor
+new_poly <- function(x) {
+  new_list_of(x, ptype = integer(), class = "vctrs_poly")
+}
+```
+
+The class constructor uses `vctrs::new_list_of`, which creates a subclass of `list_of`:
+
+* x is a list.
+
+* ptype is the prototype which every element of x belongs to.
+
+* ... allows us to add additional attributes used by the subclass.
+
+* class is the subclass name.
+
+The `list_of` object is a list where each element has the same type. Modifying the list with `$`, `[`, and `[[` preserves the constraint by coercing all input items.
+
+
+
+The **helper** (this name collides with `poly` from the stats package):
+
+```{r}
+# Helper class constructor
+poly <- function(...) {
+  x <- list(...)
+  # Pass integer() to the `to` argument in vec_cast()
+  # Cast each element of 'x' to integer()
+  x <- lapply(X = x, FUN = vec_cast, integer())
+  new_poly(x)
+}
+```
+
+**Methods** for abbreviated and full type name:
+
+```{r}
+# The ... are for potential future extensions
+vec_ptype_full.vctrs_poly <- function(x, ...) "polynomial"
+vec_ptype_abbr.vctrs_poly <- function(x, ...) "poly"
+```
+
+**Format** method:
+
+```{r}
+format.vctrs_poly <- function(x, ...) {
+  format_one <- function(x) {
+    # If empty, return an empty string
+    if (length(x) == 0) {
+      return("")
+      # If length equals 1, a constant polynomial, simply use the base function
+    } else if (length(x) == 1) {
+      format(x)
+      # If length greater than 1, apply custom formatting
+    } else {
+      suffix <- c(paste0("\u22C5x^", seq(from = length(x) - 1, to = 1)), "")
+      out <- paste0(x, suffix)
+      out <- out[x != 0L]
+      paste0(out, collapse = " + ")
+    }
+  }
+  vapply(X = x, FUN = format_one, FUN.VALUE = character(1))
+}
+```
+
+**Printing** method:
+
+```{r}
+obj_print_data.vctrs_poly <- function(x, ...) {
+  # If empty
+  if (length(x) == 0)
+    # Returns NULL
+    return()
+  # If not empty, print the formatted object
+  print(format(x), quote = FALSE)
+}
+```
+
+Let us create an object of class `vctrs_poly`:
+
+```{r}
+# Instantiate an object
+p <- poly(1, c(1, 0, 1), c(1, 0, 0, 0, 2))
+# Examine class inheritance
+sloop::s3_class(p)
+# Printing uses our custom format method
+p
+# Using a single [ returns a smaller list
+p[1]
+sloop::s3_class(p[1])
+# Using double [[ returns the values
+p[[2]]
+sloop::s3_class(p[[2]])
+# Equality method
+poly(c(1, 0, 1))
+p
+p == poly(c(1, 0, 1))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

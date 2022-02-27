@@ -12,7 +12,7 @@
 <meta name="author" content="Yang Wu" />
 
 
-<title>Basics</title>
+<title>Creating S3 vector class</title>
 
 <script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
 // be compatible with the behavior of Pandoc < 2.8).
@@ -1505,371 +1505,635 @@ div.tocify {
 
 
 
-<h1 class="title toc-ignore">Basics</h1>
+<h1 class="title toc-ignore">Creating S3 vector class</h1>
 <h4 class="author">Yang Wu</h4>
-<h4 class="date">10/4/2021</h4>
+<h4 class="date">10/7/2021</h4>
 
 </div>
 
 
-<div id="basics" class="section level1">
-<h1>Basics</h1>
-<p>A class defines a type of object, describing what properties it possesses, how it behaves, and how it relates to other types of objects. Every object must be an instance of some class. An <strong>S3</strong> object is a base type with <em>at least</em> a <strong>class</strong> attribute (other attributes may be used to store other data):</p>
-<pre class="r"><code># Factor is an S3 vector
-f &lt;- factor(x = c(&quot;a&quot;, &quot;b&quot;, &quot;c&quot;))
-# A factor has a base type integer
-typeof(f)</code></pre>
-<pre><code>## [1] &quot;integer&quot;</code></pre>
-<pre class="r"><code># It has a class attribute
-attr(x = f, which = &quot;class&quot;, exact = FALSE)</code></pre>
-<pre><code>## [1] &quot;factor&quot;</code></pre>
-<pre class="r"><code>attr(x = f, which = &quot;levels&quot;, exact = FALSE)</code></pre>
-<pre><code>## [1] &quot;a&quot; &quot;b&quot; &quot;c&quot;</code></pre>
-<pre class="r"><code># Or, equivalently
-attributes(x = f)</code></pre>
-<pre><code>## $levels
-## [1] &quot;a&quot; &quot;b&quot; &quot;c&quot;
-## 
-## $class
-## [1] &quot;factor&quot;</code></pre>
-<p>We can strip the class attribute using <code>unclass()</code> which causes the object to lose its special behavior whenever its passed to a generic function:</p>
-<pre class="r"><code>unclass(x = f)</code></pre>
-<pre><code>## [1] 1 2 3
-## attr(,&quot;levels&quot;)
-## [1] &quot;a&quot; &quot;b&quot; &quot;c&quot;</code></pre>
-<p>The <strong>class</strong> of an object is determined by its class attribute, a character vector of class names. The following example shows how to create an object of class <code>foo</code>:</p>
-<pre class="r"><code># First way
-x &lt;- 1
-attr(x, &quot;class&quot;) &lt;- &quot;foo&quot;
-x</code></pre>
-<pre><code>## [1] 1
-## attr(,&quot;class&quot;)
-## [1] &quot;foo&quot;</code></pre>
-<pre class="r"><code># Or, alternatively
-x &lt;- structure(.Data = 1, class = &quot;foo&quot;)
-x</code></pre>
-<pre><code>## [1] 1
-## attr(,&quot;class&quot;)
-## [1] &quot;foo&quot;</code></pre>
-<p>Objects are not limited to a single class, and can have many classes:</p>
-<pre class="r"><code># One way to modify
-class(x) &lt;- letters[1:4]
-class(x)</code></pre>
-<pre><code>## [1] &quot;a&quot; &quot;b&quot; &quot;c&quot; &quot;d&quot;</code></pre>
-<pre class="r"><code># Another way to modify class attribute
-attr(x, which = &quot;class&quot;) &lt;- c(&quot;Ken&quot;, &quot;Wu&quot;)
-x</code></pre>
-<pre><code>## [1] 1
-## attr(,&quot;class&quot;)
-## [1] &quot;Ken&quot; &quot;Wu&quot;</code></pre>
-<p>An S3 object behaves differently from its underlying base type whenever it is passed to a generic function. Use <code>sloop::ftype()</code> to check for generic functions:</p>
-<pre class="r"><code>ftype(f = print)</code></pre>
-<pre><code>## [1] &quot;S3&quot;      &quot;generic&quot;</code></pre>
-<pre class="r"><code>ftype(f = str)</code></pre>
-<pre><code>## [1] &quot;S3&quot;      &quot;generic&quot;</code></pre>
-<pre class="r"><code>ftype(f = sum)</code></pre>
-<pre><code>## [1] &quot;primitive&quot; &quot;generic&quot;</code></pre>
-<pre class="r"><code>ftype(f = unclass)</code></pre>
-<pre><code>## [1] &quot;primitive&quot;</code></pre>
-<p>A generic function defines an interface, which uses different implementation depending on the class of an argument. The generic has the job of defining the interface (the arguments) before finding the right implementation for the operation. The implementation for a specific class is called a <strong>method</strong>, and the generic finds that method by performing <strong>method dispatch</strong>. This process can be captured using <code>sloop::s3_dispatch()</code>:</p>
-<pre class="r"><code>s3_dispatch(call = print(f))</code></pre>
-<pre><code>## =&gt; print.factor
-##  * print.default</code></pre>
-<p>Note that S3 methods are functions with a special naming scheme <code>generic.class()</code>. As can be seen, the method for class <code>factor</code> is <code>print.factor</code>. Generally, this naming scheme, i.e., the presence of “.”, can be used to identify an S3 method. To be sure, use <code>sloop::ftype()</code>:</p>
-<pre class="r"><code># Generic
-ftype(t.test)</code></pre>
-<pre><code>## [1] &quot;S3&quot;      &quot;generic&quot;</code></pre>
-<pre class="r"><code># S3 methods
-ftype(t.data.frame)</code></pre>
-<pre><code>## [1] &quot;S3&quot;     &quot;method&quot;</code></pre>
-<pre class="r"><code>ftype(print.factor)</code></pre>
-<pre><code>## [1] &quot;S3&quot;     &quot;method&quot;</code></pre>
-<pre class="r"><code>ftype(print.Date)</code></pre>
-<pre><code>## [1] &quot;S3&quot;     &quot;method&quot;</code></pre>
-<p>The function <code>s3_dispatch()</code> prints a list of all possible function names that will be considered for method dispatch. There are four possible states:</p>
+<div id="overview" class="section level1">
+<h1>Overview</h1>
+<p>The following simple S3 classes will be explored in this vignette:</p>
 <ul>
-<li><p>=&gt; method exists and is found by UseMethod().</p></li>
-<li><p>-&gt; method exists and is used by NextMethod().</p></li>
-<li><p><code>*</code> method exists but is not used.</p></li>
-<li><p>Nothing (and grayed out in console): method does not exist.</p></li>
+<li><p><strong>Percent</strong>: a double vector that prints as a percentage. This illustrates the basic mechanics of class creation, coercion, and casting.</p></li>
+<li><p><strong>Decimal</strong>: a double vector that always prints with a fixed number of decimal places. This class has an attribute which needs a little extra care in cast and coercion.</p></li>
+<li><p><strong>Cached sum</strong>: a double vector that caches the total sum in an attribute. The attribute depends on the data, so needs extra care.</p></li>
+<li><p><strong>Polynomial</strong>: a list of integer vectors that define polynomials like <span class="math inline">\(1 + x - x^{3}\)</span>. Sorting such vectors correctly requires a custom equality method.</p></li>
 </ul>
-<p>Unlike most functions, you can’t see the source code for most S3 methods (except for methods that are found in the base package such as <code>print</code> or <code>t</code>) just by typing their names. That’s because S3 methods are not usually exported: they live only inside the package, and are not available from the global environment. Instead, use <code>sloop::s3_get_method()</code>, which will work regardless of where the method lives:</p>
-<pre class="r"><code># S3 methods that can be accessed using sloop
-s3_get_method(name = weighted.mean.Date)</code></pre>
-<pre><code>## function (x, w, ...) 
-## .Date(weighted.mean(unclass(x), w, ...))
-## &lt;bytecode: 0x7fdffba3efa0&gt;
-## &lt;environment: namespace:stats&gt;</code></pre>
-<p>We can find all S3 methods from the base package as follows:</p>
-<pre class="r"><code># Get the names of all the base package functions
-objs &lt;- mget(ls(name = &quot;package:base&quot;, all.names = TRUE), inherits = TRUE) %&gt;% names()
-# Get all names that returns TRUE using is_s3_method()
-# Use safely in case is_s3_method() fails for one of the function names in &quot;objs&quot;
-# Transpose to get all the results and NULL separately
-s3_methods &lt;- purrr::map(.x = objs, .f = purrr::safely(.f = is_s3_method)) %&gt;% purrr::transpose()
-# Find all results where is_s3_method() failed
-s3_methods_failed &lt;- objs[!purrr::map_lgl(.x = s3_methods[[&quot;error&quot;]], .f = is.null)]
-# Find all results where is_s3_method() returns TRUE
-# These are some of the S3 methods in the base package
-s3_methods_worked &lt;- objs[purrr::map_lgl(.x = s3_methods[[&quot;result&quot;]], .f = isTRUE)]
-# Get these base S3 methods in a list
-s3_methods_list &lt;- mget(ls(name = &quot;package:base&quot;, all.names = TRUE), inherits = TRUE)[s3_methods_worked]
-# Examine the first and last S3 methods
-s3_methods_list[c(1, length(s3_methods_list))]</code></pre>
-<pre><code>## $`-.Date`
-## function (e1, e2) 
-## {
-##     coerceTimeUnit &lt;- function(x) as.vector(round(switch(attr(x, 
-##         &quot;units&quot;), secs = x/86400, mins = x/1440, hours = x/24, 
-##         days = x, weeks = 7 * x)))
-##     if (!inherits(e1, &quot;Date&quot;)) 
-##         stop(&quot;can only subtract from \&quot;Date\&quot; objects&quot;)
-##     if (nargs() == 1L) 
-##         stop(&quot;unary - is not defined for \&quot;Date\&quot; objects&quot;)
-##     if (inherits(e2, &quot;Date&quot;)) 
-##         return(difftime(e1, e2, units = &quot;days&quot;))
-##     if (inherits(e2, &quot;difftime&quot;)) 
-##         e2 &lt;- coerceTimeUnit(e2)
-##     if (!is.null(attr(e2, &quot;class&quot;))) 
-##         stop(&quot;can only subtract numbers from \&quot;Date\&quot; objects&quot;)
-##     .Date(unclass(as.Date(e1)) - e2)
-## }
-## &lt;bytecode: 0x7fdff8921980&gt;
-## &lt;environment: namespace:base&gt;
-## 
-## $xtfrm.POSIXlt
-## function (x) 
-## as.double(x)
-## &lt;bytecode: 0x7fdff9dd1e88&gt;
-## &lt;environment: namespace:base&gt;</code></pre>
 <hr />
 </div>
-<div id="exercises" class="section level1">
-<h1>Exercises</h1>
-<div id="exercise-1" class="section level2">
-<h2>Exercise 1</h2>
-<p>Describe the difference between <code>t.test()</code> and <code>t.data.frame()</code>? When is each function called?</p>
-<p>The <code>t.test()</code> function is a generic function from the <code>stats</code> package:</p>
-<pre class="r"><code>ftype(f = t.test)</code></pre>
-<pre><code>## [1] &quot;S3&quot;      &quot;generic&quot;</code></pre>
-<p>The method dispatch process can be tracked as follows:</p>
-<pre class="r"><code>s3_dispatch(call = t.test(x = 1:10, y = c(7:20)))</code></pre>
-<pre><code>##    t.test.integer
-##    t.test.numeric
-## =&gt; t.test.default</code></pre>
-<p>This is the default S3 method used when both <code>x</code> and <code>y</code> are supplied as numeric vectors. The S3 method for class “formula” is used when the interface is an S3 formula object:</p>
-<pre class="r"><code># Create object
-formula_object &lt;- y ~ x
-# Object type
-otype(x = formula_object)</code></pre>
+<div id="theory-of-vctrs" class="section level1">
+<h1>Theory of <code>vctrs</code></h1>
+<div id="prototype" class="section level2">
+<h2>Prototype</h2>
+<p>Rather than using <code>class()</code> and <code>length()</code>, <code>vctrs</code> has notions of prototype (<code>vec_ptype_show()</code>) and size (<code>vec_size()</code>). <strong>The idea of a prototype is to capture the metadata associated with a vector without capturing any data.</strong> Unfortunately, the class() of an object is inadequate for this purpose:</p>
+<ul>
+<li><p>The <code>class()</code> doesn’t include attributes. Attributes are important because, for example, they store the levels of a factor and the timezone of a <code>POSIXct</code>. You cannot combine two factors or two <code>POSIXcts</code> without thinking about the attributes.</p></li>
+<li><p>The <code>class()</code> of a matrix is “matrix” and doesn’t include the type of the underlying vector or the dimensionality.</p></li>
+</ul>
+<p>Instead, <code>vctrs</code> takes advantage of R’s vectorised nature and uses a <strong>prototype</strong>, a 0-observation slice of the vector (this is basically x[0] but with some subtleties). A prototype of a vector object is a miniature version of the vector that contains all of the attributes but none of the data.</p>
+<p>Conveniently, we can create many prototypes using existing base functions (e.g, <code>double()</code> and <code>factor(levels = c(&quot;a&quot;, &quot;b&quot;))</code>). And the <code>vctrs</code> package provides a few helpers (e.g. <code>new_date()</code>, <code>new_datetime()</code>, and <code>new_duration()</code>) where the equivalents in base R are missing.</p>
+<hr />
+</div>
+<div id="size" class="section level2">
+<h2>Size</h2>
+<p>The function <code>vec_size()</code> was motivated by the need to have an invariant that describes the number of “observations” in a data structure. This is particularly important for data frames, as it’s useful to have some function such that <code>f(data.frame(x))</code> equals <code>f(x)</code>. No base function has this property:</p>
+<ul>
+<li><p><code>length(data.frame(x))</code> equals 1 because the length of a data frame is the number of columns.</p></li>
+<li><p><code>nrow(data.frame(x))</code> does not equal <code>nrow(x)</code> because <code>nrow()</code> of a vector is NULL.</p></li>
+</ul>
+<p>But <code>NROW(data.frame(x))</code> equals <code>NROW(x)</code> for vector x, so it is almost what we want. But because <code>NROW()</code> is defined in terms of <code>length()</code>, it returns a value for every object, even types that can’t go in a data frame, e.g. <code>data.frame(mean)</code> errors even though <code>NROW(mean)</code> is 1.</p>
+<p>We define <code>vec_size()</code> as follows:</p>
+<ul>
+<li><p>It is the length of 1d vectors.</p></li>
+<li><p>It is the number of rows of data frames, matrices, and arrays.</p></li>
+<li><p>It throws errors for non vectors.</p></li>
+</ul>
+<p>Given <code>vec_size()</code>, we can give a precise definition of a data frame: <strong>a data frame is a list of vectors where every vector has the same size</strong>. This has the desirable property of trivially supporting matrix and data frame columns.</p>
+<hr />
+</div>
+<div id="generic-function-vec_ptype2" class="section level2">
+<h2>Generic function vec_ptype2()</h2>
+<p>The coercion mechanism in <code>vctrs</code> are handled by two important functions <code>vec_ptype2()</code> and <code>vec_cast()</code>. Methods for <code>vec_ptype2()</code> are passed two prototypes, i.e. two inputs emptied of their elements. These methods implement two behaviors:</p>
+<ul>
+<li><p>If the types of the inputs to these methods are compatible, indicate which of them is the <em>richer</em> type by returning it. If the types are of equal resolution, return any of the two.</p></li>
+<li><p>Throw an error with <code>stop_incompatible_type()</code> when it can be determined from the attributes that the types of the inputs are not compatible.</p></li>
+</ul>
+<hr />
+</div>
+<div id="type-compatibility" class="section level2">
+<h2>Type compatibility</h2>
+<p>A type is compatible with another type if the values <em>it represents are a subset or a super-set of the values of the other type</em>. The notion of “value” is to be interpreted at a high level; in particular, it is not the same as the memory representation. For example, factors are represented in memory as integers but their values are more related to character vectors than to numbers:</p>
+<pre class="r"><code># Two factors are compatible and so factor(0) is returned
+vec_ptype2(factor(&quot;a&quot;), factor(&quot;b&quot;))</code></pre>
+<pre><code>## factor(0)
+## Levels: a b</code></pre>
+<pre class="r"><code># Factors are compatible with a character and the richer type is returned
+vec_ptype2(factor(&quot;a&quot;), &quot;b&quot;)</code></pre>
+<pre><code>## character(0)</code></pre>
+<p>On the other hand, factors are not compatible with integers:</p>
+<pre class="r"><code># Error: Can&#39;t combine &lt;factor&lt;4d52a&gt;&gt; and &lt;integer&gt;.
+vec_ptype2(factor(&quot;a&quot;), 1L)</code></pre>
+<hr />
+</div>
+<div id="richness-of-type" class="section level2">
+<h2>Richness of type</h2>
+<p>Richness of type is not a precise notion. It can be about richer data (for instance a double vector covers more values than an integer vector), richer behavior (a <code>data.table</code> has richer behavior than a <code>data.frame</code>), or both. If it is difficult to determine which one of the two input types is richer, it probably means they shouldn’t be automatically coercible:</p>
+<pre class="r"><code>vec_ptype2(factor(&quot;a&quot;), &quot;b&quot;)</code></pre>
+<pre><code>## character(0)</code></pre>
+<p>The <code>ptype2</code> method for <code>&lt;character&gt;</code> and <code>&lt;factor&lt;&quot;a&quot;&gt;&gt;</code> returns <character> because the former is the richer type. The factor can only contain “a” strings, whereas the character can contain any strings. In this sense, factors are a subset of character. Another valid behavior would be to throw an incompatible type error. This is what a strict factor implementation would do. Hadley and his team decided to relax the restrictions since it is easy to inadvertently create factors instead of character vectors.</p>
+<hr />
+</div>
+<div id="consistency-and-symmetry-on-permutation" class="section level2">
+<h2>Consistency and symmetry on permutation</h2>
+<p>Each ptype2 method should strive to have exactly the same behavior when the inputs are permuted. This is not always possible, for example factor levels are aggregated in order:</p>
+<pre class="r"><code>vec_ptype2(factor(c(&quot;a&quot;, &quot;c&quot;)), factor(&quot;b&quot;))</code></pre>
+<pre><code>## factor(0)
+## Levels: a c b</code></pre>
+<pre class="r"><code>vec_ptype2(factor(&quot;b&quot;), factor(c(&quot;a&quot;, &quot;c&quot;)))</code></pre>
+<pre><code>## factor(0)
+## Levels: b a c</code></pre>
+<p>In any case, permuting the input should not return a fundamentally different type or introduce an incompatible type error.</p>
+<hr />
+</div>
+<div id="coercion-hierarchy" class="section level2">
+<h2>Coercion hierarchy</h2>
+<p>Coercible classes form a coercion (or sub-typing) hierarchy. Below is a simplified diagram of the hierarchy for base types. In this diagram, the directions of the arrows show us which type is richer. These arrows flow from the bottom (more constrained types) to the top (richer types).</p>
+<p><img src="data:image/png;base64,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" width="142" style="display: block; margin: auto;" /></p>
+<p>As class implementers, we can integrate our own class in this existing hierarchy, either by adding parent nodes on top of the hierarchy (meaning our class is richer), by adding children node at the root of the hierarchy (indicating our class is more constrained), or by inserting a node in the tree.</p>
+<hr />
+</div>
+<div id="generric-function-vec_cast" class="section level2">
+<h2>Generric function vec_cast()</h2>
+<p>The function <code>vec_cast()</code> has three possible behaviors:</p>
+<ul>
+<li><p>Determine that the prototypes of the two inputs are not compatible. This must be decided in exactly the same way as for <code>vec_ptype2()</code>. Call <code>stop_incompatible_cast()</code> if we can determine from the attributes that the types are not compatible.</p></li>
+<li><p>Detect incompatible values. Usually this is because the target type is too restricted for the values supported by the input type. For example, a fractional number can’t be converted to an integer. The method should throw an error in that case.</p></li>
+<li><p>Return the input vector converted to the target type if all values are compatible. Whereas <code>vec_ptype2()</code> must return the same type when the inputs are permuted, <code>vec_cast()</code> is directional. It always returns the type of the right-hand side, or throws an error trying.</p></li>
+</ul>
+<hr />
+</div>
+<div id="double-dispatch" class="section level2">
+<h2>Double dispatch</h2>
+<p>The dispatch mechanism for <code>vec_ptype2()</code> and <code>vec_cast()</code> looks like S3 but is actually a custom mechanism. Compared to S3, it has the following differences:</p>
+<ul>
+<li><p>It dispatches on the classes of the first two inputs— <code>x</code> and <code>y</code> for <code>vec_ptype2()</code> and <code>x</code> and <code>to</code> for <code>vec_cast()</code></p></li>
+<li><p>There is no inheritance of ptype2 and cast methods. This is because the S3 class hierarchy is not necessarily the same as the coercion hierarchy.</p></li>
+<li><p><code>NextMethod()</code> does not work. Parent methods must be called explicitly if necessary.</p></li>
+<li><p>The default method is hard-coded.</p></li>
+</ul>
+</div>
+<div id="data-frames" class="section level2">
+<h2>Data frames</h2>
+<p>The determination of the common type of data frames with <code>vec_ptype2()</code> happens in three steps:</p>
+<ol style="list-style-type: decimal">
+<li><p>Match the columns of the two input data frames. If some columns don’t exist, they are created and filled with adequately typed <code>NA</code> values.</p></li>
+<li><p>Find the common type for each column by calling <code>vec_ptype2()</code> on each pair of matched columns.</p></li>
+<li><p>Find the common data frame type. For example the common type of a grouped tibble and a tibble is a grouped tibble because the latter is the richer type. The common type of a data table and a data frame is a data table.</p></li>
+</ol>
+<p>The generic <code>vec_cast()</code> operates similarly. If a data frame is cast to a target type that has fewer columns, this is an error since <code>vec_cast()</code> is directional.</p>
+<hr />
+</div>
+</div>
+<div id="percent-class" class="section level1">
+<h1>Percent class</h1>
+<div id="constructor" class="section level2">
+<h2>Constructor</h2>
+<p>Objects of class <code>percent</code> are built on double vectors of any length and do not have any attributes. We can create a <code>constructor</code> for this class as follows:</p>
+<pre class="r"><code>new_percent &lt;- function(x = double()) {
+  # Check base type
+  vec_assert(x, ptype = double())
+  structure(
+    .Data = x,
+    class = &quot;vctrs_percent&quot;
+  )
+}</code></pre>
+<p>Let us create an instance of this class:</p>
+<pre class="r"><code># Instantiate an object of the class
+x &lt;- new_percent(x = c(seq(from = 0, to = 1, length.out = 4), NA))
+x</code></pre>
+<pre><code>## [1] 0.0000000 0.3333333 0.6666667 1.0000000        NA
+## attr(,&quot;class&quot;)
+## [1] &quot;vctrs_percent&quot;</code></pre>
+<pre class="r"><code># Class
+attr(x, which = &quot;class&quot;)</code></pre>
+<pre><code>## [1] &quot;vctrs_percent&quot;</code></pre>
+<pre class="r"><code># Object type
+otype(x)</code></pre>
 <pre><code>## [1] &quot;S3&quot;</code></pre>
-<pre class="r"><code># Class of this object
-class(x = formula_object)</code></pre>
-<pre><code>## [1] &quot;formula&quot;</code></pre>
-<pre class="r"><code># Method dispatch finds the right S3 methods for this object with class &quot;formula&quot;
-# The method is t.test.formula()
-s3_dispatch(call = t.test(extra ~ group, data = sleep))</code></pre>
-<pre><code>## =&gt; t.test.formula
-##  * t.test.default</code></pre>
-<hr />
-<p>One the other hands, <code>t.data.frame()</code> is an S3 method:</p>
-<pre class="r"><code># Function type
-ftype(t.data.frame)</code></pre>
-<pre><code>## [1] &quot;S3&quot;     &quot;method&quot;</code></pre>
-<pre class="r"><code># Get method
-s3_get_method(name = t.data.frame)</code></pre>
-<pre><code>## function (x) 
-## {
-##     x &lt;- as.matrix(x)
-##     NextMethod(&quot;t&quot;)
-## }
-## &lt;bytecode: 0x7fdff923f760&gt;
-## &lt;environment: namespace:base&gt;</code></pre>
-<p>The source code of <code>t.data.frame()</code> shows that it uses <code>NextMethod</code> which performs method dispatch based on the class(es) of the object supplied as an argument to it.</p>
-<hr />
+<p>The act of prefixing the name of the class with the package name <code>vctrs</code> safeguards us from potentially conflicting definitions between packages.</p>
 </div>
-<div id="exercise-2" class="section level2">
-<h2>Exercise 2</h2>
-<p>Make a list of commonly used base R functions that contain “.” in their name but are not S3 methods.</p>
-<pre class="r"><code># All base R function names
-base_fn_nms &lt;- mget(x = ls(name = &quot;package:base&quot;, all.names = TRUE), inherits = TRUE) %&gt;% names()
-# Detect the presence of &quot;.&quot; in function names
-# This function is vectorized and so we do not need to apply it to every element of base_fn_nms
-# The . matches any character so escape . using \ to match . literally
-# The \ itself should also be escaped
-# There are 704 base function with . in their names
-str_detect(string = base_fn_nms, pattern = &quot;\\.&quot;, negate = FALSE) %&gt;% sum()</code></pre>
-<pre><code>## [1] 705</code></pre>
-<pre class="r"><code># Base functions with . in their names
-base_fn_dot_in_nms &lt;- base_fn_nms[str_detect(string = base_fn_nms, pattern = &quot;\\.&quot;, negate = FALSE)]
-# From this list of names, get all S3 methods
-s3_methods &lt;- purrr::map(
-  .x = base_fn_dot_in_nms,
-  .f = purrr::safely(.f = is_s3_method)
-) %&gt;% purrr::transpose()
-# Get all elements that worked
-# The index vector is created by finding all results where is_s3_method returns TRUE
-s3_methods_names &lt;- base_fn_dot_in_nms[purrr::map_lgl(.x = s3_methods[[&quot;result&quot;]], .f = isTRUE)]
-# Examine the first and last S3 method names
-s3_methods_names[c(1, length(s3_methods_names))]</code></pre>
-<pre><code>## [1] &quot;-.Date&quot;        &quot;xtfrm.POSIXlt&quot;</code></pre>
-<hr />
-</div>
-<div id="exercise-3" class="section level2">
-<h2>Exercise 3</h2>
-<p>What does the <code>as.data.frame.data.frame()</code> method do? Why is it confusing? How could you avoid this confusion in your own code?</p>
-<p>The <code>as.data.frame.data.frame()</code> method is an S3 method where the generic function is <code>as.data.frame</code>:</p>
-<pre class="r"><code>ftype(f = as.data.frame)</code></pre>
-<pre><code>## [1] &quot;S3&quot;      &quot;generic&quot;</code></pre>
-<p>And the class of the object that is <code>data.frame</code>:</p>
-<pre class="r"><code>class(x = data.frame())</code></pre>
-<pre><code>## [1] &quot;data.frame&quot;</code></pre>
-<p>The method dispatch process is as follows:</p>
-<pre class="r"><code># Data frame object
-df &lt;- data.frame()
-# Class
+<div id="helper" class="section level2">
+<h2>Helper</h2>
+<p>Since this is a rather simple class with no additional attributes, we may not require a <code>validator</code>. Below, we create a user-friendly <code>helper</code> that uses <code>vec_cast()</code> to allow it to create instances of the <code>percent</code> class even when the user inputs a type other than a double. The helper accepts any input that is coercible to a double:</p>
+<pre class="r"><code>percent &lt;- function(x = double()) {
+  # Casting input to double
+  # Return a vector the same length as x with the same type as to = double()
+  x &lt;- vec_cast(x, to = double())
+  # Call constructor
+  new_percent(x)
+}</code></pre>
+<p>Check that the user-friendly <code>constructor</code> returns a zero-length vector when called with no arguments. This makes it easy to use as a prototype:</p>
+<pre class="r"><code>new_percent()</code></pre>
+<pre><code>## numeric(0)
+## attr(,&quot;class&quot;)
+## [1] &quot;vctrs_percent&quot;</code></pre>
+<pre class="r"><code>percent()</code></pre>
+<pre><code>## numeric(0)
+## attr(,&quot;class&quot;)
+## [1] &quot;vctrs_percent&quot;</code></pre>
+<p>For the convenience of our users, we may also implement an <code>is_percent()</code> function. The function <code>inherits()</code> indicates whether its first argument <code>x</code> inherits from any of the classes specified in the <code>what</code> argument. If <code>which</code> is set to TRUE, then an integer vector of the same length as the <code>what</code> argument is returned. Each element of this returned integer vector indicates the positions of elements in <code>class(x)</code> that are matched by the elements of <code>what</code>; zero indicates no match. For example:</p>
+<pre class="r"><code># Class
+df &lt;- data.table::data.table()
 class(df)</code></pre>
-<pre><code>## [1] &quot;data.frame&quot;</code></pre>
-<pre class="r"><code>attr(x = df, which = &quot;class&quot;, exact = TRUE)</code></pre>
-<pre><code>## [1] &quot;data.frame&quot;</code></pre>
-<pre class="r"><code># Method dispatch
-s3_dispatch(call = as.data.frame(df))</code></pre>
-<pre><code>## =&gt; as.data.frame.data.frame
-##  * as.data.frame.default</code></pre>
-<p>Here’s the object <code>df</code> has class <code>data.frame</code> and so the S3 naming scheme leads to the confusing name <code>as.data.frame.data.frame()</code> for this method. To avoid this, we can use different naming conventions to separate the generic and the class, e.g. <code>as.data.frame_data.frame()</code>.</p>
-<hr />
-</div>
-<div id="exercise-4" class="section level2">
-<h2>Exercise 4</h2>
-<p>Describe the difference in behavior in these two calls.</p>
-<pre class="r"><code># Create object
-# This broadcasts the length-5 integer vector onto the length-1 date vector
-# The returned object is a vector of length 5
-# Each element is a date equaling &quot;2017-01-31&quot; plus sample(10, 5)[[i]] number of days
-some_days &lt;- as.Date(&quot;2017-01-31&quot;) + sample(10, 5)
-# Object type
-otype(x = some_days)</code></pre>
-<pre><code>## [1] &quot;S3&quot;</code></pre>
-<pre class="r"><code># Base type
-typeof(x = some_days)</code></pre>
-<pre><code>## [1] &quot;double&quot;</code></pre>
-<pre class="r"><code># Class
-attributes(x = some_days)</code></pre>
-<pre><code>## $class
-## [1] &quot;Date&quot;</code></pre>
-<pre class="r"><code># Function type
-mean %&gt;% ftype()</code></pre>
-<pre><code>## [1] &quot;S3&quot;      &quot;generic&quot;</code></pre>
-<pre class="r"><code># Method dispatch
-s3_dispatch(call = mean(some_days))</code></pre>
-<pre><code>## =&gt; mean.Date
-##  * mean.default</code></pre>
-<pre class="r"><code>s3_dispatch(call = mean(unclass(some_days)))</code></pre>
-<pre><code>##    mean.double
-##    mean.numeric
-## =&gt; mean.default</code></pre>
-<pre class="r"><code># Results
-mean(some_days)</code></pre>
-<pre><code>## [1] &quot;2017-02-04&quot;</code></pre>
-<pre class="r"><code>mean(unclass(some_days))</code></pre>
-<pre><code>## [1] 17201.6</code></pre>
-<p>As can be seen, when we unclass the object with class <code>Date</code>, it behaves differently when passed to the S3 generic function <code>mean</code>. Unclassing <code>some_days</code> returns the atomic double vector, which uses the <code>mean.default()</code> method. When the object with class <code>Date</code> is passed to the <code>mean</code> function, the method <code>mean.Date()</code> is used.</p>
-<hr />
-</div>
-<div id="exercise-5" class="section level2">
-<h2>Exercise 5</h2>
-<p>What class of object does the following code return? What base type is it built on? What attributes does it use?</p>
-<pre class="r"><code># Object
-x &lt;- ecdf(rpois(100, 10))
-x</code></pre>
-<pre><code>## Empirical CDF 
-## Call: ecdf(rpois(100, 10))
-##  x[1:14] =      4,      5,      6,  ...,     16,     18</code></pre>
-<pre class="r"><code># Base type
-# This is a function object
-typeof(x = x)</code></pre>
-<pre><code>## [1] &quot;closure&quot;</code></pre>
-<pre class="r"><code># Object type
-# This is an S3 object
-otype(x = x)</code></pre>
-<pre><code>## [1] &quot;S3&quot;</code></pre>
-<pre class="r"><code># Class
-attributes(x)</code></pre>
-<pre><code>## $class
-## [1] &quot;ecdf&quot;     &quot;stepfun&quot;  &quot;function&quot;
-## 
-## $call
-## ecdf(rpois(100, 10))</code></pre>
-<p>The base type of object <code>x</code> is “closure”. The object is of the class <code>ecdf</code> (empirical cumulative distribution function) with super-classes “stepfun” and “function”. It also has a <code>call</code> attribute, which stores the function expression.</p>
-<hr />
-</div>
-<div id="exercise-6" class="section level2">
-<h2>Exercise 6</h2>
-<p>What class of object does the following code return? What base type is it built on? What attributes does it use?</p>
-<pre class="r"><code># Object
-x &lt;- table(rpois(n = 100, lambda = 5))
-x</code></pre>
-<pre><code>## 
-##  1  2  3  4  5  6  7  8  9 10 13 
-##  3 11 14 14 18 12  8 11  4  4  1</code></pre>
-<pre class="r"><code># Base type
-typeof(x = x)</code></pre>
-<pre><code>## [1] &quot;integer&quot;</code></pre>
-<pre class="r"><code># Object type
-# This is an S3 object
-otype(x = x)</code></pre>
-<pre><code>## [1] &quot;S3&quot;</code></pre>
-<pre class="r"><code># Class
-attributes(x)</code></pre>
-<pre><code>## $dim
-## [1] 11
-## 
-## $dimnames
-## $dimnames[[1]]
-##  [1] &quot;1&quot;  &quot;2&quot;  &quot;3&quot;  &quot;4&quot;  &quot;5&quot;  &quot;6&quot;  &quot;7&quot;  &quot;8&quot;  &quot;9&quot;  &quot;10&quot; &quot;13&quot;
-## 
-## 
-## $class
-## [1] &quot;table&quot;</code></pre>
-<p>The object has base type <code>integer</code> and class <code>table</code>. The other attributes are:</p>
+<pre><code>## [1] &quot;data.table&quot; &quot;data.frame&quot;</code></pre>
+<pre class="r"><code># Inheritance
+inherits(df, what = c(&quot;type&quot;, &quot;data.table&quot;, &quot;python&quot;, &quot;data.frame&quot;), which = TRUE)</code></pre>
+<pre><code>## [1] 0 1 0 2</code></pre>
 <ul>
-<li><p><code>dimnames</code> which stores all occured elements in the vector generated by <code>rpois(n = 100, lambda = 5)</code></p></li>
-<li><p><code>dim</code> which stores the number of unique elements that are observed in the vector generated by <code>rpois(n = 100, lambda = 5)</code></p></li>
+<li><p>The returned integer vector has the same length as <code>what</code>. The <em>first</em> element of <code>class(df)</code> is “data.table” and it is not matched by the first and third elements of <code>what</code>; therefore, in the returned integer vector, the first and third elements are zeros. This element is matched by the second element of <code>what</code>, and so the returned integer has the index <code>1</code> as its second element.</p></li>
+<li><p>The <em>second</em> element of <code>class(df)</code> is “data.frame” and it is matched by the fourth element of <code>what</code>; therefore, the returned integer vector has the index <code>2</code> as its fourth element. The index <code>2</code> indicates that this element is the second element of the <code>class(df)</code> vector.</p></li>
+</ul>
+<p>If <code>which</code> is FALSE then TRUE is returned by inherits if any of the names in <code>what</code> matches with any of the values in <code>class(x)</code>.</p>
+<pre class="r"><code>x</code></pre>
+<pre><code>## [1] 0.0000000 0.3333333 0.6666667 1.0000000        NA
+## attr(,&quot;class&quot;)
+## [1] &quot;vctrs_percent&quot;</code></pre>
+<pre class="r"><code># Inherits from &quot;vctrs_percent&quot;
+inherits(x, what = &quot;vctrs_percent&quot;, which = TRUE)</code></pre>
+<pre><code>## [1] 1</code></pre>
+<pre class="r"><code># Inherits from &quot;vctrs_percent&quot;
+inherits(x, what = &quot;vctrs_percent&quot;, which = FALSE)</code></pre>
+<pre><code>## [1] TRUE</code></pre>
+<pre class="r"><code># Do not inherit from &quot;vctrs_percent&quot;
+inherits(c(3, 2), what = &quot;vctrs_percent&quot;, which = TRUE)</code></pre>
+<pre><code>## [1] 0</code></pre>
+<pre class="r"><code># Do not inherit from &quot;vctrs_percent&quot;
+inherits(c(3, 2), what = &quot;vctrs_percent&quot;, which = FALSE)</code></pre>
+<pre><code>## [1] FALSE</code></pre>
+<p>Use this function to create the test:</p>
+<pre class="r"><code>is_percent &lt;- function(x) {
+  inherits(x, what = &quot;vctrs_percent&quot;, which = FALSE)
+}</code></pre>
+<p>Test:</p>
+<pre class="r"><code>x %&gt;% is_percent()</code></pre>
+<pre><code>## [1] TRUE</code></pre>
+<hr />
+</div>
+<div id="the-format-method" class="section level2">
+<h2>The format() method</h2>
+<p>The first method for every class should almost always be a <code>format()</code> method. For the <code>percent</code> class, this should return a character vector the same length as the input <code>x</code>. The generic <code>format()</code> already has many methods defined for many classes:</p>
+<pre class="r"><code># Is a generic
+ftype(f = format)</code></pre>
+<pre><code>## [1] &quot;S3&quot;      &quot;generic&quot;</code></pre>
+<pre class="r"><code># Find all methods defined for this generic
+s3_methods_generic(x = &quot;format&quot;) %&gt;% psych::headTail()</code></pre>
+<pre><code>##   generic              class visible              source
+## 1  format               AsIs    TRUE                base
+## 2  format             aspell   FALSE registered S3method
+## 3  format           bibentry   FALSE registered S3method
+## 4  format check_bogus_return   FALSE registered S3method
+## 5    &lt;NA&gt;               &lt;NA&gt;    &lt;NA&gt;                &lt;NA&gt;
+## 6  format      vctrs_list_of   FALSE registered S3method
+## 7  format         vctrs_rcrd   FALSE registered S3method
+## 8  format         vctrs_vctr   FALSE registered S3method
+## 9  format           xml_node   FALSE registered S3method</code></pre>
+<pre class="r"><code># There is currently no method for the percent class
+&quot;vctrs_percent&quot; %in% s3_methods_generic(x = &quot;format&quot;)$class</code></pre>
+<pre><code>## [1] FALSE</code></pre>
+<p>The easiest way to create this <code>format()</code> method is to rely on one of R’s low-level formatting functions like <code>formatC()</code>, which formats numbers individually and flexibly using C style format specifications. The function <code>vec_data()</code> extract the data underlying an S3 vector object, i.e. the underlying (named) atomic vector, data frame, or list. Lastly, for <code>signif()</code>, the recognized values of digits are 1…22 decimal places, and non-missing values are rounded to the nearest integer in that range for decimal places.</p>
+<pre class="r"><code>format.vctrs_percent &lt;- function(x, ...) {
+  # The function formatC() takes the double vector x and format it to a character vector
+  out &lt;- formatC(x = signif(vec_data(x) * 100, 3))
+  # Set missing values to NA
+  out[is.na(x)] &lt;- NA
+  # Attach % symbol to non-missing values
+  out[!is.na(x)] &lt;- paste0(out[!is.na(x)], &quot;%&quot;)
+  out
+}</code></pre>
+<p>Let us see it in action:</p>
+<pre class="r"><code># Dispatch
+s3_dispatch(call = format(x))</code></pre>
+<pre><code>## =&gt; format.vctrs_percent
+##  * format.default</code></pre>
+<pre class="r"><code># Format
+format(x)</code></pre>
+<pre><code>## [1] &quot;0%&quot;    &quot;33.3%&quot; &quot;66.7%&quot; &quot;100%&quot;  NA</code></pre>
+<pre class="r"><code># See method
+s3_methods_generic(&quot;format&quot;) %&gt;% filter(class == &quot;vctrs_percent&quot;)</code></pre>
+<pre><code>## # A tibble: 1 × 4
+##   generic class         visible source    
+##   &lt;chr&gt;   &lt;chr&gt;         &lt;lgl&gt;   &lt;chr&gt;     
+## 1 format  vctrs_percent TRUE    .GlobalEnv</code></pre>
+<p>For whatever reason, however, the function <code>formatC()</code> discards any class and so using it coerces our input <code>x</code> to a character vector. We lose the class attribute of our object:</p>
+<pre class="r"><code>format(x) %&gt;% class()</code></pre>
+<pre><code>## [1] &quot;character&quot;</code></pre>
+<p>This is problematic as we cannot call the format method on our object. This would need some investigation. For optimal display, Hadley also recommends defining an abbreviated type name, which should be 4-5 letters for commonly used vectors.</p>
+<pre class="r"><code># Generic
+ftype(f = vec_ptype_abbr)</code></pre>
+<pre><code>## [1] &quot;S3&quot;      &quot;generic&quot;</code></pre>
+<pre class="r"><code># Define method for displaying an abbreviated vector type string
+vec_ptype_abbr.vctrs_percent &lt;- function(x, ...) {
+  &quot;prcnt&quot;
+}</code></pre>
+<hr />
+</div>
+</div>
+<div id="casting-and-coercion" class="section level1">
+<h1>Casting and coercion</h1>
+<p>The next set of methods are coercion and casting methods. Coercion and casting are two sides of the same coin: changing the prototype of an existing object. When the change happens implicitly (e.g in c()) we call it <strong>coercion</strong>; when the change happens explicitly (e.g. with as.integer(x)), we call it <strong>casting</strong>.</p>
+<p>One of the main goals of <code>vctrs</code> is to put coercion and casting on a robust theoretical footing so it’s possible to make accurate predictions about what, e.g., <code>c(x, y)</code> should do when x and y have different prototypes. Therefore, <code>vctrs</code> achieves this goal through two <strong>generics</strong>:</p>
+<ul>
+<li><p><code>vec_ptype2(x, y)</code> defines possible set of coercion. It returns a prototype if x and y can be safely coerced to the same prototype; otherwise it returns an error. The set of automatic coercion is usually quite small because too many tend to make code harder to reason about and silently propagate mistakes.</p></li>
+<li><p><code>vec_cast(x, to)</code> defines the possible sets of casts. It returns <code>x</code> translated to have prototype <code>to</code>, or throws an error if the conversion isn’t possible. The set of possible casts is a superset of possible coercion because they’re requested explicitly.</p></li>
+</ul>
+<p>These two generics implement functional OOP and are responsible for performing method dispatch. Therefore, as we will see below, creating coercion (<code>vec_ptype2(x, y)</code>) and casting (<code>vec_cast(x, to)</code>) methods for custom classes comes down to defining functions of the following forms:</p>
+<ul>
+<li><code>vec_ptype2.class_of_input_x.class_of_input_y</code></li>
+<li><code>vec_cast.class_of_input_x.class_of_input_to</code></li>
+</ul>
+<div id="double-dispatch-1" class="section level2">
+<h2>Double dispatch</h2>
+<p><strong>Double dispatch</strong> is a special form of multiple dispatch, and a mechanism that dispatches a function call to different concrete functions depending on the types of two objects involved in the call. Both <code>vec_cast(x, to)</code> and <code>vec_ptype2(x, y)</code> use double dispatch, meaning that the implementation is selected based on the classes of two arguments, not just one. S3 does not natively support double dispatch, so Hadley’s team implemented their own dispatch mechanism. In practice, this means:</p>
+<ul>
+<li><p>We end up with method names with two classes, like <code>vec_ptype2.foo.bar()</code>.</p></li>
+<li><p>We don’t need to implement default methods (they would never be called if you do).</p></li>
+<li><p>We can’t call <code>NextMethod()</code>.</p></li>
 </ul>
 <hr />
-<p>To understand what is returned by <code>table()</code>, i.e., the contingency table, we need to experiment a bit:</p>
-<pre class="r"><code># Create a generated vector
-vector &lt;- rpois(n = 100, lambda = 5)
-vector</code></pre>
-<pre><code>##   [1]  6  6  7  4  3  6  4  8  6  8  5  6  9  2 10  8  5  5  4  6  5  4  2  4  6
-##  [26]  3  3  5  4  6  4  7  9  6  4  7  3  7  5  7  4  5  2  3  4  5  7  4  7  6
-##  [51]  8  6 10  7  5  7  6  1  6  3  3  7  6  5 14  3  1  5  9  4  4  5  1  6  4
-##  [76]  3  4  3  4  5  5  3  5  4  5  1  6  4  4  2  3  4  2  6  7  9  2  3  6  6</code></pre>
-<pre class="r"><code># The contingency table returns all unique elements (dimnames) in &quot;vector&quot; and their counts (second row)
-table &lt;- table(vector)
-# The attribute dimnames are the unique elements in &quot;vector&quot;
-attr(x = table, which = &quot;dimnames&quot;)</code></pre>
-<pre><code>## $vector
-##  [1] &quot;1&quot;  &quot;2&quot;  &quot;3&quot;  &quot;4&quot;  &quot;5&quot;  &quot;6&quot;  &quot;7&quot;  &quot;8&quot;  &quot;9&quot;  &quot;10&quot; &quot;14&quot;</code></pre>
-<pre class="r"><code>unique(x = vector) %&gt;% sort()</code></pre>
-<pre><code>##  [1]  1  2  3  4  5  6  7  8  9 10 14</code></pre>
-<pre class="r"><code># The attribute dim is the length of the unique vector
-attr(x = table, which = &quot;dim&quot;)</code></pre>
-<pre><code>## [1] 11</code></pre>
-<pre class="r"><code>unique(x = vector) %&gt;% length()</code></pre>
-<pre><code>## [1] 11</code></pre>
-<pre class="r"><code># The second row of the contingency table gives the count of each observed unique element
-# The element &quot;4&quot; occurred x times
-vector[vector == 4]</code></pre>
-<pre><code>##  [1] 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4</code></pre>
-<pre class="r"><code>vector[vector == 4] %&gt;% length()</code></pre>
-<pre><code>## [1] 20</code></pre>
-<pre class="r"><code># The element &quot;9&quot; occurred x times
-vector[vector == 9]</code></pre>
-<pre><code>## [1] 9 9 9 9</code></pre>
-<pre class="r"><code>vector[vector == 9] %&gt;% length()</code></pre>
-<pre><code>## [1] 4</code></pre>
 </div>
+</div>
+<div id="percent-class-more-methods" class="section level1">
+<h1>Percent class (more methods)</h1>
+<p>The function <code>vec_ptype2()</code> provides a user friendly error message if the coercion doesn’t exist and makes sure <code>NA</code> is handled in a standard way. <code>NA</code> is technically a logical vector, but we want to stand in for a missing value of any type:</p>
+<pre class="r"><code>vec_ptype2(&quot;bogus&quot;, percent())</code></pre>
+<p>The above coercion returns the following error:</p>
+<pre class="r"><code>Error in `stop_vctrs()`:
+! Can&#39;t combine &lt;character&gt; and &lt;vctrs_percent&gt;.
+Backtrace:
+ 1. vctrs::vec_ptype2(&quot;bogus&quot;, percent())
+ 2. vctrs `&lt;fn&gt;`()
+ 3. vctrs::vec_default_ptype2(...)
+ 4. vctrs::stop_incompatible_type(...)
+ 5. vctrs:::stop_incompatible(...)
+ 6. vctrs:::stop_vctrs(...)
+Error in stop_vctrs(message, class = c(class, &quot;vctrs_error_incompatible&quot;), :</code></pre>
+<p>There is symmetry in terms of coercion results:</p>
+<pre class="r"><code># Symmetry between permuted inputs producing same results
+vec_ptype2(percent(), NA)</code></pre>
+<pre><code>## numeric(0)
+## attr(,&quot;class&quot;)
+## [1] &quot;vctrs_percent&quot;</code></pre>
+<pre class="r"><code>vec_ptype2(NA, percent())</code></pre>
+<pre><code>## numeric(0)
+## attr(,&quot;class&quot;)
+## [1] &quot;vctrs_percent&quot;</code></pre>
+<p>By default and in simple cases, an object of the same class is compatible with itself:</p>
+<pre class="r"><code>vec_ptype2(percent(), percent())</code></pre>
+<pre><code>## numeric(0)
+## attr(,&quot;class&quot;)
+## [1] &quot;vctrs_percent&quot;</code></pre>
+<hr />
+<div id="method-for-vec_ptype2-combining-vctrs_percent-with-vctrs_percent" class="section level2">
+<h2>Method for vec_ptype2(): Combining <code>vctrs_percent</code> with <code>vctrs_percent</code></h2>
+<p>However this only works if the attributes for both objects are the same. It is always a good idea to provide an explicit coercion method for the case of identical classes. So we’ll start by saying that a <code>vctrs_percent</code> combined with a <code>vctrs_percent</code> yields a <code>vctrs_percent</code>, which we indicate by returning a prototype generated by the constructor.</p>
+<pre class="r"><code>vec_ptype2.vctrs_percent.vctrs_percent &lt;- function(x, y, ...) new_percent()</code></pre>
+<p>The <code>vctrs_percent</code> class does not have any attributes implemented currently. But, in the future, if we try to coerce two <code>vctrs_percent</code> objects with different attributes, a single prototype will be returned by the explicit coercion method.</p>
+<hr />
+</div>
+<div id="method-for-vec_ptype2-combining-percent-and-double" class="section level2">
+<h2>Method for vec_ptype2(): Combining <code>percent</code> and <code>double</code></h2>
+<p>Next we define methods that force a certain kind of behavior— combining a <code>percent</code> and <code>double</code> should yield a <code>double</code>, since a double is the richer type. The double dispatch mechanism requires us to refer to the underlying type, <code>double</code>, in the method name. If we implemented <code>vec_ptype2.vctrs_percent.numeric()</code>, it would never be called:</p>
+<pre class="r"><code># Define methods of conversion for class percent
+vec_ptype2.vctrs_percent.double &lt;- function(x, y, ...) double()
+vec_ptype2.double.vctrs_percent &lt;- function(x, y, ...) double()
+# Check
+vec_ptype_show(percent(), double(), percent())</code></pre>
+<pre><code>## Prototype: &lt;double&gt;
+## 0. (                 , &lt;vctrs_percent&gt; ) = &lt;vctrs_percent&gt;
+## 1. ( &lt;vctrs_percent&gt; , &lt;double&gt;        ) = &lt;double&gt;       
+## 2. ( &lt;double&gt;        , &lt;vctrs_percent&gt; ) = &lt;double&gt;</code></pre>
+<hr />
+</div>
+<div id="method-for-vec_cast-casting-vctrs_percent-to-vctrs_percent" class="section level2">
+<h2>Method for vec_cast(): Casting <code>vctrs_percent</code> to <code>vctrs_percent</code></h2>
+<p>The <code>vec_ptype2()</code> methods define which input is the richer type that vctrs should coerce to, while <code>vec_cast()</code> performs the coercion. Below, we provide a method to cast a <code>percent</code> to a <code>percent</code>:</p>
+<pre class="r"><code>vec_cast.vctrs_percent.vctrs_percent &lt;- function(x, to, ...) x</code></pre>
+<hr />
+</div>
+<div id="method-for-vec_cast-casting-vctrs_percent-to-and-from-double" class="section level2">
+<h2>Method for vec_cast(): Casting <code>vctrs_percent</code> to and from <code>double</code></h2>
+<p>To convert a <code>double</code> to a <code>percent</code> we use the <code>percent()</code> helper. To convert a <code>percent</code> to a <code>double</code>, we strip the attributes. Again, the double dispatch mechanism requires us to refer to the underlying type, <code>double</code>, in the method name.</p>
+<pre class="r"><code># Helper percent() uses vec_cast() to coerce input x to double, if possible
+vec_cast.vctrs_percent.double &lt;- function(x, to, ...) percent(x)
+# The function vec_data() extracts the data only
+vec_cast.double.vctrs_percent &lt;- function(x, to, ...) vec_data(x)</code></pre>
+<p>We can check if this works with:</p>
+<pre class="r"><code># Casting double to percent
+vec_cast(0.5, percent())</code></pre>
+<pre><code>## [1] 0.5
+## attr(,&quot;class&quot;)
+## [1] &quot;vctrs_percent&quot;</code></pre>
+<pre class="r"><code># Casting percent to double
+vec_cast(percent(0.5), double())</code></pre>
+<pre><code>## [1] 0.5</code></pre>
+<p>Try the formatting method on the new object that has been casted from <code>double</code> to <code>percent</code>:</p>
+<pre class="r"><code># Cast from double to percent
+new_instance &lt;- vec_cast(0.5, percent())
+# Call formatting method
+format(new_instance)</code></pre>
+<pre><code>## [1] &quot;50%&quot;</code></pre>
+<pre class="r"><code># Calling format on the ordinary double vector would have returned
+format(0.5)</code></pre>
+<pre><code>## [1] &quot;0.5&quot;</code></pre>
+<hr />
+</div>
+<div id="methods-for-vec_c---and--" class="section level2">
+<h2>Methods for <code>vec_c()</code>, <code>[&lt;-</code>, and <code>[[&lt;-</code></h2>
+<p>Once we implement <code>vec_ptype2()</code> and <code>vec_cast()</code>, we get <code>vec_c()</code>, <code>[&lt;-</code>, and <code>[[&lt;-</code> implementations for free:</p>
+<pre class="r"><code># Concatenating percent and double returns a double
+vec_c(percent(0.5), 1) %&gt;% s3_class()</code></pre>
+<pre><code>## [1] &quot;double&quot;  &quot;numeric&quot;</code></pre>
+<pre class="r"><code># Concatenating percent and NA returns a percent
+vec_c(NA, percent(0.5))</code></pre>
+<pre><code>## [1]  NA 0.5
+## attr(,&quot;class&quot;)
+## [1] &quot;vctrs_percent&quot;</code></pre>
+<pre class="r"><code># Create an instance of percent
+x &lt;- percent(c(0.5, 1, 2))
+x</code></pre>
+<pre><code>## [1] 0.5 1.0 2.0
+## attr(,&quot;class&quot;)
+## [1] &quot;vctrs_percent&quot;</code></pre>
+<pre class="r"><code># Subset and assignment
+x[1:2] &lt;- 2:1
+x</code></pre>
+<pre><code>## [1] 2 1 2
+## attr(,&quot;class&quot;)
+## [1] &quot;vctrs_percent&quot;</code></pre>
+<pre class="r"><code># Subset and assignment
+x[[3]] &lt;- 0.5
+x</code></pre>
+<pre><code>## [1] 2.0 1.0 0.5
+## attr(,&quot;class&quot;)
+## [1] &quot;vctrs_percent&quot;</code></pre>
+<hr />
+</div>
+<div id="implementing-as_percent" class="section level2">
+<h2>Implementing as_percent()</h2>
+<p>Again, we may consider providing an <code>as_percent()</code> function that makes direct use of the casting method defined in our <code>vec_cast.vctrs_percent()</code> methods:</p>
+<pre class="r"><code>as_percent &lt;- function(x) {
+  vec_cast(x, to = new_percent())
+}</code></pre>
+<p>It may be useful to provide conversions that go beyond what’s allowed in casting. For example, we could offer a parsing method for character vectors. In this case, <code>as_percent()</code> should be a generic, the default method should cast, and then additional methods should implement more flexible conversion:</p>
+<pre class="r"><code># Define generic
+as_percent &lt;- function(x, ...) {
+  UseMethod(&quot;as_percent&quot;)
+}
+# Define default method
+as_percent.default &lt;- function(x, ...) {
+  vec_cast(x, new_percent())
+}
+# Define s3 methods for character inputs
+as_percent.character &lt;- function(x) {
+  value &lt;- as.numeric(gsub(&quot; *% *$&quot;, &quot;&quot;, x)) / 100
+  new_percent(value)
+}</code></pre>
+<hr />
+</div>
+</div>
+<div id="cached-sum-class" class="section level1">
+<h1>Cached sum class</h1>
+<p>The next level up in complexity is an object that has data-dependent attributes. To explore this idea, we’ll create a vector that caches the sum of its values. As usual, we start with low-level and user-friendly constructors:</p>
+<pre class="r"><code># Constructor
+new_cached_sum &lt;- function(x = double(), sum = 0L) {
+  # Check base type
+  vec_assert(x, ptype = double())
+  # Check attribute
+  vec_assert(sum, ptype = double(), size = 1L)
+
+  new_vctr(x, sum = sum, class = &quot;vctrs_cached_sum&quot;)
+}
+# Helper
+cached_sum &lt;- function(x) {
+  x &lt;- vec_cast(x, double())
+  new_cached_sum(x, sum(x))
+}</code></pre>
+<p>The <code>new_vctr()</code> constructor creates an object with class <code>vctrs_vctr</code> which has a number of methods. For example:</p>
+<ul>
+<li><p>The <code>print()</code> and <code>str()</code> methods are defined in terms of the base function <code>format()</code> so we get a pleasant, consistent display as soon as we have implemented our own <code>format()</code> method.</p></li>
+<li><p>We can immediately put our new vector class in a data frame because <code>as.data.frame.vctrs_vctr()</code> does the right thing.</p></li>
+<li><p>Subsetting ([, [[, and $), length&lt;-, and rep() methods automatically preserve attributes because they use <code>vec_restore()</code>. A default <code>vec_restore()</code> works for all classes where the attributes are data-independent, and can easily be customized when the attributes do depend on the data. <strong>See below for an example</strong>.</p></li>
+<li><p>Default subset-assignment methods ([&lt;-, [[&lt;-, and $&lt;-) follow the principle that the new values should be coerced to match the existing vector. This gives predictable behavior and clear error messages.</p></li>
+</ul>
+<p>For class <code>cached_sum</code>, we can use the default <code>format()</code> method; we’ll also customize the <code>obj_print_footer()</code> method. This method has three components— header, data, and footer. The header gives the prototype of the object, the data gives the value of the object, and the footer invisibly returns the object itself.</p>
+<pre class="r"><code># Factor object
+f &lt;- factor(letters[1:5], levels = letters[1:5])
+# Print
+obj_print(f)</code></pre>
+<pre><code>## &lt;factor&lt;1ee51&gt;[5]&gt;
+## [1] a b c d e</code></pre>
+<pre class="r"><code># Header
+obj_print_header(f)</code></pre>
+<pre><code>## &lt;factor&lt;1ee51&gt;[5]&gt;</code></pre>
+<pre class="r"><code># Data
+obj_print_data(f)</code></pre>
+<pre><code>## [1] a b c d e</code></pre>
+<pre class="r"><code># Footer
+(obj_print_footer(f))</code></pre>
+<pre><code>## [1] a b c d e
+## Levels: a b c d e</code></pre>
+<p>We can modify the footer as follow:</p>
+<pre class="r"><code># Define footer method for our cached_sum class
+obj_print_footer.vctrs_cached_sum &lt;- function(x, ...) {
+  cat(&quot;# Sum: &quot;, format(attr(x, which = &quot;sum&quot;), digits = 3), &quot;\n&quot;, sep = &quot;&quot;)
+}
+# Create an instance of the class
+x &lt;- cached_sum(runif(10))
+# Method dispatch
+s3_dispatch(print(x))</code></pre>
+<pre><code>##    print.vctrs_cached_sum
+## =&gt; print.vctrs_vctr
+##  * print.default</code></pre>
+<pre class="r"><code># Print footer
+s3_dispatch(obj_print_footer(x))</code></pre>
+<pre><code>## =&gt; obj_print_footer.vctrs_cached_sum
+##    obj_print_footer.vctrs_vctr
+##  * obj_print_footer.default</code></pre>
+<pre class="r"><code># Print
+obj_print(x)</code></pre>
+<pre><code>## &lt;vctrs_cached_sum[10]&gt;
+##  [1] 0.58675284 0.89790562 0.35309322 0.05589626 0.44429260 0.65036393
+##  [7] 0.05990844 0.35976622 0.97249859 0.65593759
+## # Sum: 5.04</code></pre>
+<p>We’ll also override <code>sum()</code> and <code>mean()</code> to use this attribute. This is easiest to do with <code>vec_math()</code>. The function <code>vec_math_base()</code> is provided as a convenience for writing methods. It calls the base <code>.fn</code> on the underlying <code>vec_data()</code>.</p>
+<pre class="r"><code># Define method
+vec_math.vctrs_cached_sum &lt;- function(.fn, .x, ...) {
+  # Print a user-facing message to let the user know which method is using
+  cat(&quot;Using cache\n&quot;)
+  # C switch statement
+  switch(.fn,
+    # If .fn is &quot;sum&quot;, just use the attribute
+    sum = attr(.x, &quot;sum&quot;),
+    # If .fn is &quot;mean&quot;, divide the attribute by the length of the vector
+    mean = attr(.x, &quot;sum&quot;) / vec_size(.x),
+    # If not the former two, then use the base function
+    vec_math_base(.fn, .x, ...)
+  )
+}
+# Test
+sum(x)</code></pre>
+<pre><code>## Using cache</code></pre>
+<pre><code>## [1] 5.036415</code></pre>
+<p>One problem we have is that <code>vctrs</code> assumes that attributes are independent of the data. In the case of class <code>cached_sum</code>, the sum attribute depends on the vector. This means that when we take advantage of the default subsetting methods, they would return the incorrect result— prints the sum for the entire vector and not the sum of the subsetted vector:</p>
+<pre class="r"><code>x[1:2]</code></pre>
+<pre><code>## &lt;vctrs_cached_sum[2]&gt;
+## [1] 0.5867528 0.8979056
+## # Sum: 5.04</code></pre>
+<p>To fix this, we need to define a <code>vec_restore.vctrs_cached_sum()</code> method for our <code>vctrs_cached_sum</code> class that the <code>vec_restore()</code> generic function can find:</p>
+<pre class="r"><code>vec_restore.vctrs_cached_sum &lt;- function(x, to, ..., i = NULL) {
+  new_cached_sum(x, sum = sum(x))
+}
+# Check if the method is properly defined for class vctrs_cached_sum
+s3_methods_generic(x = &quot;vec_restore&quot;) %&gt;% filter(class == &quot;vctrs_cached_sum&quot;)</code></pre>
+<pre><code>## # A tibble: 1 × 4
+##   generic     class            visible source    
+##   &lt;chr&gt;       &lt;chr&gt;            &lt;lgl&gt;   &lt;chr&gt;     
+## 1 vec_restore vctrs_cached_sum TRUE    .GlobalEnv</code></pre>
+<pre class="r"><code># Now the default subsetting method will use `vec_restore`, with our custom method defined, under the hood
+x[1]</code></pre>
+<pre><code>## &lt;vctrs_cached_sum[1]&gt;
+## [1] 0.5867528
+## # Sum: 0.587</code></pre>
+<p>This works since most of the <code>vctrs</code> methods dispatch to the underlying base function by first stripping off extra attributes with <code>vec_data()</code> and then reapplying them again with <code>vec_restore()</code>. The default <code>vec_restore()</code> method copies over all attributes, which is not appropriate when the attributes depend on the data.</p>
+</div>
+<div id="polynomial-class" class="section level1">
+<h1>Polynomial class</h1>
+<p>The <strong>constructor</strong>:</p>
+<pre class="r"><code># Constructor
+new_poly &lt;- function(x) {
+  new_list_of(x, ptype = integer(), class = &quot;vctrs_poly&quot;)
+}</code></pre>
+<p>The class constructor uses <code>vctrs::new_list_of</code>, which creates a subclass of <code>list_of</code>:</p>
+<ul>
+<li><p>x is a list.</p></li>
+<li><p>ptype is the prototype which every element of x belongs to.</p></li>
+<li><p>… allows us to add additional attributes used by the subclass.</p></li>
+<li><p>class is the subclass name.</p></li>
+</ul>
+<p>The <code>list_of</code> object is a list where each element has the same type. Modifying the list with <code>$</code>, <code>[</code>, and <code>[[</code> preserves the constraint by coercing all input items.</p>
+<p>The <strong>helper</strong> (this name collides with <code>poly</code> from the stats package):</p>
+<pre class="r"><code># Helper class constructor
+poly &lt;- function(...) {
+  x &lt;- list(...)
+  # Pass integer() to the `to` argument in vec_cast()
+  # Cast each element of &#39;x&#39; to integer()
+  x &lt;- lapply(X = x, FUN = vec_cast, integer())
+  new_poly(x)
+}</code></pre>
+<p><strong>Methods</strong> for abbreviated and full type name:</p>
+<pre class="r"><code># The ... are for potential future extensions
+vec_ptype_full.vctrs_poly &lt;- function(x, ...) &quot;polynomial&quot;
+vec_ptype_abbr.vctrs_poly &lt;- function(x, ...) &quot;poly&quot;</code></pre>
+<p><strong>Format</strong> method:</p>
+<pre class="r"><code>format.vctrs_poly &lt;- function(x, ...) {
+  format_one &lt;- function(x) {
+    # If empty, return an empty string
+    if (length(x) == 0) {
+      return(&quot;&quot;)
+      # If length equals 1, a constant polynomial, simply use the base function
+    } else if (length(x) == 1) {
+      format(x)
+      # If length greater than 1, apply custom formatting
+    } else {
+      suffix &lt;- c(paste0(&quot;\u22C5x^&quot;, seq(from = length(x) - 1, to = 1)), &quot;&quot;)
+      out &lt;- paste0(x, suffix)
+      out &lt;- out[x != 0L]
+      paste0(out, collapse = &quot; + &quot;)
+    }
+  }
+  vapply(X = x, FUN = format_one, FUN.VALUE = character(1))
+}</code></pre>
+<p><strong>Printing</strong> method:</p>
+<pre class="r"><code>obj_print_data.vctrs_poly &lt;- function(x, ...) {
+  # If empty
+  if (length(x) == 0)
+    # Returns NULL
+    return()
+  # If not empty, print the formatted object
+  print(format(x), quote = FALSE)
+}</code></pre>
+<p>Let us create an object of class <code>vctrs_poly</code>:</p>
+<pre class="r"><code># Instantiate an object
+p &lt;- poly(1, c(1, 0, 1), c(1, 0, 0, 0, 2))
+# Examine class inheritance
+sloop::s3_class(p)</code></pre>
+<pre><code>## [1] &quot;vctrs_poly&quot;    &quot;vctrs_list_of&quot; &quot;vctrs_vctr&quot;    &quot;list&quot;</code></pre>
+<pre class="r"><code># Printing uses our custom format method
+p</code></pre>
+<pre><code>## &lt;polynomial[3]&gt;
+## [1] 1         1⋅x^2 + 1 1⋅x^4 + 2</code></pre>
+<pre class="r"><code># Using a single [ returns a smaller list
+p[1]</code></pre>
+<pre><code>## &lt;polynomial[1]&gt;
+## [1] 1</code></pre>
+<pre class="r"><code>sloop::s3_class(p[1])</code></pre>
+<pre><code>## [1] &quot;vctrs_poly&quot;    &quot;vctrs_list_of&quot; &quot;vctrs_vctr&quot;    &quot;list&quot;</code></pre>
+<pre class="r"><code># Using double [[ returns the values
+p[[2]]</code></pre>
+<pre><code>## [1] 1 0 1</code></pre>
+<pre class="r"><code>sloop::s3_class(p[[2]])</code></pre>
+<pre><code>## [1] &quot;integer&quot; &quot;numeric&quot;</code></pre>
+<pre class="r"><code># Equality method
+poly(c(1, 0, 1))</code></pre>
+<pre><code>## &lt;polynomial[1]&gt;
+## [1] 1⋅x^2 + 1</code></pre>
+<pre class="r"><code>p</code></pre>
+<pre><code>## &lt;polynomial[3]&gt;
+## [1] 1         1⋅x^2 + 1 1⋅x^4 + 2</code></pre>
+<pre class="r"><code>p == poly(c(1, 0, 1))</code></pre>
+<pre><code>## [1] FALSE  TRUE FALSE</code></pre>
 </div>
 
 

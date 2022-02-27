@@ -289,7 +289,7 @@ otype(x = x)
 attributes(x)
 ```
 
-The base type of object `x` is "closure". The object is of the class ecdf (empirical cumulative distribution function) with the super-classes are "stepfun" and are "function". It also has a `call` attribute, which stores the function expression. 
+The base type of object `x` is "closure". The object is of the class `ecdf` (empirical cumulative distribution function) with super-classes "stepfun" and "function". It also has a `call` attribute, which stores the function expression. 
 
 ---
 
@@ -302,7 +302,6 @@ What class of object does the following code return? What base type is it built 
 x <- table(rpois(n = 100, lambda = 5))
 x
 # Base type
-# This is a function object
 typeof(x = x)
 # Object type
 # This is an S3 object
@@ -334,10 +333,10 @@ unique(x = vector) %>% sort()
 attr(x = table, which = "dim")
 unique(x = vector) %>% length()
 # The second row of the contingency table gives the count of each observed unique element
-# The element "4" occurred 16 times
+# The element "4" occurred x times
 vector[vector == 4]
 vector[vector == 4] %>% length()
-# The element "9" occurred 5 times
+# The element "9" occurred x times
 vector[vector == 9]
 vector[vector == 9] %>% length()
 ```

@@ -64,9 +64,9 @@ output:
 
 Base R provides three OOP systems: S3, S4, and reference classes (RC):
 
-* S3 is R’s first OOP system, and is described in Statistical Models in S.62 S3 is an informal implementation of functional OOP and relies on common conventions rather than ironclad guarantees. This makes it easy to get started with, providing a low cost way of solving many simple problems.
+* S3 is R’s first OOP system, and is described in Statistical Models in S. `S3` is an informal implementation of functional OOP and relies on common conventions rather than ironclad guarantees. This makes it easy to get started with, providing a low cost way of solving many simple problems.
 
-* S4 is a formal and rigorous rewrite of S3, and was introduced in Programming with Data.63 It requires more upfront work than S3, but in return provides more guarantees and greater encapsulation. S4 is implemented in the base methods package, which is always installed with R.
+* S4 is a formal and rigorous rewrite of S3, and was introduced in Programming with Data. It requires more upfront work than S3, but in return provides more guarantees and greater encapsulation. S4 is implemented in the base methods package, which is always installed with R.
 
 (You might wonder if S1 and S2 exist. They don’t: S3 and S4 were named according to the versions of S that they accompanied. The first two versions of S didn’t have any OOP framework.)
 

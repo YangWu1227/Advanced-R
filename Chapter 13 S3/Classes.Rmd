@@ -1,0 +1,541 @@
+---
+title: "Classes"
+author: "Yang Wu"
+date: "10/5/2021"
+output:
+  bookdown::html_document2:
+    toc: true
+    toc_float: true
+    number_sections: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(fig.height = 6, fig.width = 7, fig.align = "center")
+library(sloop)
+library(magrittr)
+```
+
+## Classes
+
+To make an object an instance of a class, we need to set the class attribute:
+
+```{r}
+# Create and assign class in one step
+x <- structure(.Data = list(), class = "my_class")
+# Object type
+otype(x)
+# Class
+attributes(x)
+```
+
+Or, equivalently:
+
+```{r}
+# Create then set class
+x <- list()
+class(x) <- "my_class"
+# Object type
+otype(x)
+# Class
+attributes(x)
+```
+
+To determine the class of an S3 object and see if an object is an instance of a class:
+
+```{r}
+# Check class
+class(x)
+# Check if object is an instance of a class
+inherits(x, what = "my_class", which = FALSE)
+# The object is not of class "lm"
+inherits(x, what = "lm", which = FALSE)
+```
+
+Three functions are important when creating a custom class:
+
+* A constructor called `new_myclass()`
+
+* A validator called `validate_myclass()`
+
+* A helper called `myclass()`
+
+---
+
+# Constuctors
+
+*The constructor creates new objects with a the correct structure for a given class*. This is because S3 does not have a formal definition of a class and so there is no built-in way to ensure that all objects of a given class have the same structure. The constructor should follow three principles:
+
+* Be called `new_myclass()`
+
+* Have one argument for the base object, and one for each attribute
+
+* Check the type of the base object and the types of each attribute
+
+For example, we can create a constructor for base classes--- the S3 class "Date." The "Date" class is built on double vectors with a single attribute--- its class "Date." 
+
+```{r}
+# One argument for the base object
+new_Date <- function(x = double()) {
+  # Check the type of the base object
+  stopifnot(is.double(x))
+  structure(x, class = "Date")
+}
+```
+
+The value of the base object--- the double--- represents the number of days since `1970-01-01`, the Unix Epoch:
+
+```{r}
+new_Date(x = c(-1, 0, 7))
+```
+
+---
+
+Another example is that for `difftime`, which is used to represent time differences. This object, also built on doubles, is of the class `difftime` and it has a `units` attribute.
+
+```{r}
+# Two arguments for base object and attributes, respectively
+new_difftime <- function(x = double(), units = "secs") {
+  # Check base type and type of attribute
+  stopifnot(is.double(x))
+  units <- match.arg(
+    arg = units,
+    choices = c("secs", "mins", "hours", "days", "weeks"),
+    # Should arg be allowed to have more than one element?
+    several.ok = FALSE
+  )
+
+  structure(.Data = x, class = "difftime", units = units)
+}
+```
+
+Instantiate objects of class `difftime`:
+
+```{r}
+new_difftime(x = c(1, 20, 300), units = "secs")
+new_difftime(x = c(300), units = "weeks")
+```
+
+A constructor will be used by experience users and so we can trade a bit of safety for performance. In other words, leave the more expensive checks for the validator.
+
+---
+
+# Validators
+
+*The validator perform more computationally expensive checks, which may be required for more complicated classes*. For instance, the `factor` class require more complicated checks as the constructor, which only checks that the types are correct, may create malformed structures.
+
+```{r}
+# Constructor
+new_factor <- function(x = integer(), levels = character()) {
+  stopifnot(is.integer(x))
+  stopifnot(is.character(levels))
+
+  structure(.Data = x, class = "factor", levels = levels)
+}
+```
+
+This example below will lead to malformed factors:
+
+```{r, eval=FALSE}
+# Error in as.character.factor(x) : malformed factor
+new_factor(x = (1:8), "a")
+```
+
+Create a validator:
+
+```{r}
+validate_factor <- function(x) {
+  # Get underlying base object
+  # This would be an integer vector, each element representing a unique factor level
+  values <- unclass(x)
+  # Get levels attributes, which will be a character
+  levels <- attr(x = x, which = "levels", exact = FALSE)
+
+  # Check base object validity
+  # The predicate function is.na(values) must return FALSE so that !is.na(values) returns TRUE
+  # Both !is.na(values) AND values > 0 must be TRUE to avoid signalling the error condition object
+  # If either !is.na(values) OR values > 0 is FALSE, all() will be FALSE and !all() will be TRUE
+  # Use & rather than vectorized && since all elements of values must not be NA
+  if (!all(!is.na(values) & values > 0)) {
+    stop(
+      "All 'x' values must be non-missing and greater than zero",
+      call. = FALSE
+    )
+  }
+
+  # Check attribute validity
+  # The maximum of the values vector is the number of unique factor levels in the input x
+  if (length(levels) < max(values)) {
+    stop(
+      "There must be at least as many 'levels' as possible values in 'x'",
+      call. = FALSE
+    )
+  }
+
+  # Return visibly the input
+  return(x)
+}
+```
+
+This validator can check for the validity of structure of the object created by the constructor:
+
+```{r}
+# The constructor creates a valid object of class factor
+validate_factor(x = new_factor(x = 1:5, levels = letters[1:5]))
+```
+
+Or malformed factors:
+
+```{r, eval=FALSE}
+# Error: There must be at least as many 'levels' as possible values in 'x'
+validate_factor(x = new_factor(x = 1:5, levels = c("male", "female")))
+# Error: All 'x' values must be non-missing and greater than zero
+validate_factor(x = new_factor(x = c(1:5, NA_integer_), levels = letters[1:6]))
+# Error: All 'x' values must be non-missing and greater than zero
+validate_factor(x = new_factor(x = 0:5, levels = letters[1:6]))
+```
+
+---
+
+# Helpers
+
+*A helper method provides a convenient way for others to create objects of a custom class*. A helper method should always have the following properties:
+
+* Have the same name as the class, e.g., `myclass()`
+
+* Finish by calling the constructor, and the validator, if it exists
+
+* Create carefully crafted user interface with carefully chosen default values and useful conversions
+
+Lastly, there are three common patterns:
+
+* Sometimes the helper needs to coerce its inputs to the desired type. For instance, the constructor for objects of `difftime` class, `new_difftime()`, is very strict; it violates the usual convention that we can use an integer vector wherever we can use a double vector:
+
+```{r, eval=FALSE}
+# Error in new_difftime(x = 1:19, units = "hours") : is.double(x) is not TRUE
+new_difftime(x = 1:19, units = "hours")
+```
+
+The constructor must be strict, but we may create a helper that coerces the input to a double:
+
+```{r}
+# Helper
+difftime <- function(x = double(), units = "secs") {
+  x <- as.double(x)
+  # Finish by calling the constructor
+  new_difftime(x, units = units)
+}
+# Now the integer input can be coerced
+difftime(x = 1:19, units = "days")
+```
+
+---
+
+* It may be convenient sometimes to specify a factor with a character vector. For objects of class `factor`, it may be helpful to create a helper method called `factor()` that takes a character vector and assumes that the levels should be the unique values. This is a simple implementation of the base function `factor`:
+
+```{r}
+factor <- function(x = character(), levels = unique(x)) {
+  # Return the positions of (first) matches of x in table
+  index <- match(x = x, table = levels)
+  # Finish by calling constructor and validator
+  validate_factor(x = new_factor(x = index, levels = levels))
+}
+```
+
+We can use this helper to create objects of class `factor` by supplying character vectors:
+
+```{r}
+factor(x = c("male", "female", "other", "female", "male", "male"))
+```
+
+---
+
+* Some complex objects are most naturally specified by multiple simple components. For instance, objects of classes `POSIXct` (built-on double vectors) and `POSIXlt`, i.e., date-time classes, may be constructed by supplying the individual components (year, month, day, etc.). We can create a `POSIXct()` helper method that resembles the `ISODatetime()` function or the `lubridate::make_datetime()` function:
+
+```{r}
+POSIXct <- function(year = integer(),
+                    month = integer(),
+                    day = integer(),
+                    hour = 0L,
+                    minute = 0L,
+                    second = 0,
+                    tzones = "") {
+  lubridate::make_datetime(
+    year = year,
+    month = month,
+    day = day,
+    hour = hour,
+    min = minute,
+    sec = second,
+    tz = tzones
+  )
+}
+```
+
+We can use this helper method to create objects of the date-time classes:
+
+```{r}
+# Create object
+POSIXct(2020, 1, 1, tzone = "America/New_York")
+# Base type
+POSIXct(2020, 1, 1, tzone = "America/New_York") %>% typeof()
+# Object type
+POSIXct(2020, 1, 1, tzone = "America/New_York") %>% otype()
+# Class
+POSIXct(2020, 1, 1, tzone = "America/New_York") %>% attributes()
+```
+
+---
+
+# Exercises 
+
+## Exercise 1
+
+Write a constructor for `data.frame` objects. What base type is a data frame built on? What attributes does it use? What are the restrictions placed on the individual elements? What about the names?
+
+```{r}
+# Base type
+typeof(data.frame())
+# Is OO object?
+is.object(data.frame())
+# Object type
+otype(data.frame())
+# Attributes
+attributes(x = data.frame())
+```
+
+Create a constructor:
+
+```{r}
+new_data_frame <- function(x = list(), names = character(), row.names = integer()) {
+  # Check base type
+  stopifnot(is.list(x))
+  # Check attribute types
+  stopifnot(is.character(names))
+  stopifnot(is.integer(row.names))
+
+  structure(
+    .Data = x,
+    class = "data.frame",
+    names = names,
+    row.names = row.names
+  )
+}
+```
+
+We can use the constructor to create objects of class `data.frame`:
+
+```{r}
+new_data_frame(x = list(9:19, 32:42), names = c("x", "y"), row.names = 1:10)
+```
+
+---
+
+## Exercise 2
+
+Enhance the `factor()` helper to have better behavior when one or more values is not found in levels. What does `base::factor()` do in this situation?
+
+The function `base::factor()` handles the situation where one or more values is not found in levels by coercing them to NA's:
+
+```{r}
+base::factor(sample(letters[1:5], size = 12, replace = TRUE), levels = letters[1:3])
+```
+
+To enhance our `factor()` helper method, we can use the `nomatch` argument in the `match()` function to capture the values that do not appear in the levels. Then use the captured values to signal a custom error condition object: 
+
+```{r}
+# Create custom abort function
+abort_unknown_level <- function(x, levels = NULL, index) {
+
+  # Capture values that did not have matches in levels
+  unknown_levels <- x[!index] %>% unique()
+  # Capture values that did have matches in levels
+  matched_levels <- x[index] %>% unique()
+  # Error message for user
+  msg <- glue::glue(
+    "Values {toString(unknown_levels)} are not found in levels; all unique values in 'x' must be found in ({toString(levels)})."
+  )
+
+  # Store meta data in condition call
+  # This allows us to use rlang::catch_cnd() to get these meta data
+  rlang::abort(
+    "error_unknown_level",
+    message = msg,
+    unknown_levels = unknown_levels,
+    matched_levels = matched_levels
+  )
+}
+```
+
+Now we can use the custom `abort()` function to throw the error in the `factor()` helper method:
+
+```{r}
+factor <- function(x = character(), levels = unique(x)) {
+
+  # Return the positions of (first) matches of x in table
+  # If any value in x has no match in table, then return FALSE
+  # The index logical_index has TRUE's for the matched and FALSE's for the unmatched
+  logical_index <- match(x = x, table = levels, nomatch = FALSE) %>% as.logical()
+
+  # Custom condition object
+  # If any element in logical_index is FALSE, all() will returns FALSE and !all() will return TRUE
+  if (!all(logical_index)) {
+    abort_unknown_level(x, levels, logical_index)
+  }
+
+  # If no error, finish by calling constructor and validator
+  validate_factor(x = new_factor(x = index, levels = levels))
+}
+```
+
+Let us see it in action. The example below will throw an error and we will use `rlang::catch_cnd()` to capture the error condition object:
+
+```{r, eval=FALSE}
+# This will return => Error: error_unknown_level
+factor(
+  x = sample(letters[1:5], size = 12, replace = TRUE),
+  levels = letters[1:3]
+)
+```
+
+We can examine the error condition object:
+
+```{r}
+# Capture condition object
+error <- factor(
+  x = sample(letters[1:5], size = 12, replace = TRUE),
+  levels = letters[1:3]
+) %>%
+  rlang::catch_cnd()
+# Examine message
+error$message
+# Examine metadata
+error$unknown_levels
+error$matched_levels
+```
+
+This structured condition object allows for more comprehensive user interface and stores more meta data for the developer.
+
+---
+
+## Exercise 3
+
+Carefully read the source code of `factor()`. What does it do that our constructor does not?
+
+This is source code our constructor:
+
+```{r}
+new_factor
+```
+
+This is source code of the `base::factor()` function: 
+
+```{r}
+base::factor
+```
+
+---
+
+## Exercise 4
+
+Factors have an optional “contrasts” attribute. Read the help for C(), and briefly describe the purpose of the attribute. What type should it have? Rewrite the new_factor() constructor to include this attribute.
+
+```{r}
+new_factor <- function(x = integer(),
+                       levels = character(),
+                       contrasts = NULL) {
+  stopifnot(is.integer(x))
+  stopifnot(is.character(levels))
+
+  if (!is.null(constrasts)) {
+    stopifnot(is.matrix(contrasts) && is.numeric(contrasts))
+  }
+
+  structure(
+    x,
+    levels = levels,
+    class = "factor",
+    contrasts = contrasts
+  )
+}
+```
+
+---
+
+## Exercise 5
+
+Read the documentation for `utils::as.roman()`. How would you write a constructor for this class? Does it need a validator? What might a helper do?
+
+The function `utils::as.roman()` creates objects of class `roman`, which are internally built on integer vectors. This class has suitable methods for printing, formatting, sub-setting, coercion, etc.  
+
+```{r}
+# Object
+utils::as.roman(x = 1:5)
+# Base type
+typeof(utils::as.roman(x = 1:5))
+# Is OO object?
+is.object(utils::as.roman(x = 1:5))
+# Object type
+otype(utils::as.roman(x = 1:5))
+# Attributes
+attributes(x = utils::as.roman(x = 1:5))
+```
+
+This object has one attribute--- its class `roman`. We can create a constructor for objects of this class as follows:
+
+```{r}
+new_roman <- function(x = integer()) {
+  stopifnot(is.integer(x))
+  structure(
+    .Data = x, 
+    class = "roman"
+  )
+}
+```
+
+We can use this constructor to create objects of class `roman`:
+
+```{r}
+new_roman(x = sample(x = 1:10, size = 5))
+```
+
+Since this is a simple class, we do not need a validator. However, since `double` and `integer` are used almost interchangeably by most R users, we may need to create a helper method that coerces double vector inputs to the desire type:
+
+```{r}
+roman <- function(x = integer()) {
+  x <- as.integer(x)
+  new_roman(x)
+}
+```
+
+Now, if we supply doubles to the constructor, it would throw an error:
+
+```{r, eval=FALSE}
+# Error in new_roman(x = c(2.3, 423.2, 232.1)) : is.integer(x) is not TRUE
+new_roman(x = c(2.3, 423.2, 232.1))
+```
+
+The helper method provides more flexibility:
+
+```{r}
+roman(x = c(2.3, 423.2, 232.1))
+```
+
+```{r, echo=FALSE}
+rlang::env_unbind(env = rlang::caller_env(), nms = names(rlang::global_env()))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+

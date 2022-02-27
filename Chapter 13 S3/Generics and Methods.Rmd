@@ -1,0 +1,534 @@
+---
+title: "Generics and Methods"
+author: "Yang Wu"
+date: "10/6/2021"
+output:
+  bookdown::html_document2:
+    toc: true
+    toc_float: true
+    number_sections: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(message = TRUE)
+knitr::opts_chunk$set(warning = TRUE)
+knitr::opts_chunk$set(fig.height = 6, fig.width = 7, fig.align = "center")
+library(sloop)
+library(tidyverse)
+```
+
+## Introduction
+
+The S3 generic function performs **method dispatch**, that is, finding the specific implementation for a given class. Method dispatch is performed by `UseMethod()`, which is a primitive function. Every generic with the exception of internal (primitive) generics calls `UseMethod()` when performing method dispatch. The function has two arguments:
+
+* "generic" is a character string naming a function (and not a built-in operator) and is required
+
+* "object" is an object whose class will determine the method to be dispatched and this defaults to the first argument if it is not supplied
+
+When a function calling `UseMethod("fun")` is applied to an object with class attribute `c("first", "second")`, the system searches for a function called `fun.first` and, if it finds it, applies it to the object. If no such function is found a function called `fun.second` is tried. If no class name in `c("first", "second")` produces a suitable function, the function `fun.default` is used, if it exists, or an error results.
+
+```{r}
+print
+```
+
+When `print()` is called on an object, for instance `matrix(1:20, 2)`, the class attribute `x("matrix" "array")`, the base type `c("integer")`, and the mode `c("numeric")` for this base object is used for method dispatch. Since neither of those functions `print.matrix`, `print.integer`, and `print.numeric` are found, `print.default` is used:
+
+```{r}
+s3_dispatch(call = print(matrix(1:20, 2)))
+```
+
+---
+
+# Method dispatch
+
+Essentially, `UseMethod()` creates a vector of method names:
+
+```{r}
+# Classes of x
+x <- 1L
+s3_class(x)
+# Create vector of method names
+paste0("generic", ".", c(s3_class(x), "default"))
+```
+
+Another example:
+
+```{r}
+# Object
+x <- Sys.Date()
+# Class
+s3_class(x)
+# Method dispatch
+s3_dispatch(call = print(x))
+```
+
+* `=>` indicates the method that is called, here `print.Date()`
+* `*` indicates a method that is defined, but not called, here `print.default()`
+
+The “default” class is a special **pseudo-class**. This is not a real class, but is included to make it possible to define a standard fallback that is found whenever a class-specific method is not available.
+
+---
+
+# Finding methods
+
+Find some base package S3 generic functions:
+
+```{r}
+# Base R functions
+base_fn <- mget(x = ls(name = "package:base", all.names = TRUE), inherits = TRUE)
+# Define a function to test whether a function is a S3 generic
+test_fn <- function(x) {
+  identical(ftype(x), c("S3", "generic"))
+}
+test_fn_safe <- safely(test_fn)
+# Store results
+results <- purrr::map(.x = base_fn, .f = test_fn_safe) %>% purrr::transpose()
+# Create index
+index <- purrr::map_lgl(.x = results[["result"]], .f = isTRUE)
+# Subset to select S3 generic functions
+base_fn %>%
+  names() %>%
+  `[`(index)
+```
+
+We can use `s3_methods_generic(x)` and `s3_methods_class(x)` where x is the name of class or generic.
+
+```{r}
+# Check all methods defined for a given generic
+s3_methods_generic("mean")
+s3_methods_generic("solve")
+s3_methods_generic("within")
+# Check all generics that have been provided methods for a given class
+s3_methods_class("Date")
+s3_methods_class("roman")
+s3_methods_class("factor")
+```
+
+---
+
+# Exercises
+
+## Exercise 1
+
+What generics does the `table` class have methods for?
+
+```{r}
+s3_methods_class(x = "table")
+```
+
+As an example, when an object of class `class` is passed to the generic function `plot()`, `plot.table()` is used:
+
+```{r}
+s3_dispatch(plot(table(sample(1:10, 20, replace = TRUE))))
+```
+
+---
+
+## Exericse 2
+
+What generics does the `ecdf` class have methods for?
+
+```{r}
+s3_methods_class(x = "ecdf")
+```
+
+---
+
+## Exercise 3
+
+Which base generic has the greatest number of defined methods?
+
+```{r}
+# List all names in base environment
+# Character vector
+ls(all.names = TRUE, env = base::baseenv()) %>%
+  # Search for list of names in the base environment
+  # List object
+  mget(x = ., envir = baseenv(), inherits = FALSE) %>%
+  # Keep elements when purrr::is_function() returns TRUE
+  # List object
+  keep(.x = ., .p = is_function) %>%
+  # Get the names of the functions
+  # Character vector
+  names() %>%
+  # Keep names that return TRUE when passed to is_s3_generic()
+  # Character vector
+  keep(is_s3_generic) %>%
+  # The function s3_methods_generic(x) returns a tibble for each function name
+  # The anonymous function returns a named integer vector each iteration of map
+  # The two components of these vectors are the function names and the number of rows in the tibble
+  # List object
+  map(.x = ., .f = ~ set_names(x = nrow(s3_methods_generic(.x)), nm = .x)) %>%
+  # Flatten the list object from vertical to horizontal
+  flatten_int(.x = .) %>%
+  # Sort
+  sort(decreasing = TRUE) %>%
+  head(n = 5)
+```
+
+---
+
+## Exercise 4
+
+Carefully read the documentation for `UseMethod()` and explain why the following code returns the results that it does. What two usual rules of function evaluation does `UseMethod()` violate?
+
+```{r}
+# Define g
+g <- function(x) {
+  x <- 10
+  y <- 10
+  UseMethod("g")
+}
+# Define method
+g.default <- function(x) c(x = x, y = y)
+# Bindings in global environment
+x <- 1
+y <- 5
+# Method dispatch
+s3_dispatch(call = g(x))
+# Call g
+g(x)
+```
+
+The rule that `UseMethod()` breaks is name-masking. Normally, names defined inside the function should mask names defined outside. In other words, the bindings `x <- 10` and ` y <- 10` inside `g()` should mask those defined outside--- `x <- 1` and ` y <- 1`. However, `g(x)` returns `c(1, 10)`, which means that the value of `x` is scoped from the global environment while that of `y` is scoped from within the generic function `g()`. Why?
+
+* When `UseMethod("g")` is called within `g()`, method dispatch is performed and `g.default()` is called. Since `g.default()` is defined in the global environment, it binds or encloses the global environment; this is where `g.default()` scopes for the value of its argument `x`. Thus, the binding `x <- 1` is used. The argument supplied to the function `g()` is passed on as is and cannot be affected by code inside the generic. Since the binding `x <- 1` already exists in the enclosing environment of `g.default()`, `x <- 10` defined within the generic is masked.
+
+---
+
+## Exercise 5
+
+What are the arguments to `[`? Why is this a hard question to answer?
+
+```{r}
+# Function type
+ftype(`[`)
+# Source code
+pryr::show_c_source(.Primitive("["))
+# Get methods for this generic
+s3_methods_generic("[") %>%
+  # Keep only those methods that are exported
+  filter(.data = ., visible == TRUE)
+```
+
+---
+
+# Object styles
+
+Vector style classes have the key property that `length(x)` represents the number of observations in the vector. Some other variants do not have this property:
+
+* Record style objects use a list of equal-length vectors to represent individual components of the object.The best example of this is POSIXlt, which underneath the hood is a list of 11 date-time components like year, month, and day. Record style classes override length() and subsetting methods to conceal this implementation detail.
+
+```{r}
+# Object
+x <- as.POSIXlt(ISOdatetime(2020, 1, 1, 0, 0, 1:3))
+x
+# Length
+length(x)
+# Unclass results in a list of 11 elements, each of which is a date-time component
+unclass(x)
+# First date-time object
+x[[1]]
+# Class
+x[[1]] %>% class()
+# This object is a list under the hood
+x[[1]] %>% unclass()
+```
+
+---
+
+* Data frames are similar to record style objects in that both use lists of equal length vectors. 
+
+```{r}
+# Object
+x <- data.frame(x = 1:100, y = 1:100)
+# Length
+length(x)
+# Unclass
+x %>% unclass()
+# length
+length(x %>% unclass() %>% `[[`(1))
+```
+
+---
+
+* Scalar objects typically use a list to represent a single thing. For example, an lm object is a list of length 12 but it represents one model.
+
+```{r}
+# Object
+mod <- lm(mpg ~ wt, data = mtcars)
+# Length
+length(mod)
+```
+
+---
+
+# Exercises
+
+## Exercise 1
+
+Categorize the objects returned by `lm()`, `factor()`, `table()`, `as.Date()`, `as.POSIXct()`,`ecdf()`, `ordered()`, `I()` into the styles described above.
+
+* Objects of class `lm` are scalar style
+
+```{r}
+# Object
+mod <- lm(mpg ~ wt, data = mtcars)
+# Class
+class(mod)
+# Base type
+mod %>% typeof()
+```
+
+* Objects of class `factor` are vector style objects
+
+```{r}
+# Object
+x <- factor(x = letters[1:10])
+# Class
+class(x)
+# Unclass
+unclass(x)
+```
+
+* Objects of class `table` are vector style objects
+
+```{r}
+# Object
+x <- table(x = sample(x = 1:20, size = 50, replace = TRUE))
+x
+# Class
+class(x)
+# Unclass
+unclass(x)
+```
+
+* Objects of class `Date` are vector style objects
+
+```{r}
+# Object
+x <- as.Date(x = "2021-10-12")
+x
+# Class
+class(x)
+# Unclass
+unclass(x)
+```
+
+* Date time objects of classes `POSIXlt` and `POSIXct` are record style objects
+
+```{r}
+# Object
+x <- as.POSIXlt(Sys.time(), "America/New_York")
+x
+# Class
+class(x)
+# Unclass
+unclass(x)
+```
+
+* Objects of class `ecdf` are cannot be categorized by any of the three categories--- scalar, record style, and vector style
+
+```{r}
+# Object
+x <- rnorm(12) %>% ecdf()
+x
+# Class
+x %>% attributes()
+# Base type
+# First class function object
+typeof(x)
+# Unclass
+unclass(x) %>% attributes()
+```
+
+* Objects of classes c(`ordered`, `factor`) are vector style objects
+
+```{r}
+# Object
+x <- ordered(letters[1:10])
+# Class
+x %>% attributes()
+# Unclass
+unclass(x)
+```
+
+* Objects of classes `AsIs` can be any style depending on the argument to `I(x)` 
+
+```{r}
+# Object
+x <- I(mtcars)
+y <- I(as.Date(x = "2021-10-12"))
+# Class
+attributes(x)
+attributes(y)
+```
+
+---
+
+## Exercise 2
+
+What would a constructor function for `lm` objects, `new_lm()`, look like? Use ?lm and experimentation to figure out the required fields and their types.
+
+```{r}
+# Constructor for objects of class lm
+new_lm <- function(x = list(), names = list()) {
+  # Check base type and attributes
+  stopifnot(is.list(x))
+  stopifnot(is.list(names))
+
+  structure(
+    .Data = x,
+    class = "lm",
+    names = names
+  )
+}
+```
+
+The constructor is for developers and so experienced developers would know what fields are required in the `names` list. We may create a validator to ensure that the structure of the object created by `new_lm()` is as desired:
+
+```{r}
+# Validator for objects of class lm
+validator_lm <- function(x) {
+
+  # Validate each component in lm list
+  if (is.double(x$coefficient)) {
+    stop(
+      "Coefficients must be of type 'double'"
+    )
+  }
+  if (is.double(x$residuals)) {
+    stop(
+      "Residuals must be of type 'double'"
+    )
+  }
+  if (is.double(x$effects)) {
+    stop(
+      "Effects must be of type 'double'"
+    )
+  }
+  if (is.integer(x$rank)) {
+    stop(
+      "Coefficients must be of type 'integer'"
+    )
+  }
+  if (is.double(x$fitted.values)) {
+    stop(
+      "Fitted.values must be of type 'double'"
+    )
+  }
+  if (is.integer(x$assign)) {
+    stop(
+      "Assign must be of type 'integer'"
+    )
+  }
+  if (is.list(x$qr)) {
+    stop(
+      "QR decomposition must be of type 'list'"
+    )
+  }
+  if (is.integer(x$df.residual)) {
+    stop(
+      "Df.residual must be of type 'integer'"
+    )
+  }
+  if (is.list(x$xlevels)) {
+    stop(
+      "Xlevels must be of type 'integer'"
+    )
+  }
+  if (is.language(x$call)) {
+    stop(
+      "Call must be of type 'language'"
+    )
+  }
+  if (purrr::is_formula(x$terms)) {
+    stop(
+      "Terms must be of type 'formula'"
+    )
+  }
+  if (is.list(x$model)) {
+    stop(
+      "Model must be of type 'list'"
+    )
+  }
+
+  x
+}
+```
+
+We may also create a helper for the user, although the use of this is minimal, since we usually create objects of class `lm` from the actual data:
+
+```{r}
+# Helper
+lm <- function(coefficients = double(),
+               residuals = double(),
+               effects = double(),
+               rank = integer(),
+               fitted.values = double(),
+               assign = integer(),
+               qr = list(),
+               df.residual = integer(),
+               xlevels = list(),
+               call = lm(formula = y ~ x, data = data.frame()),
+               terms = y ~ x,
+               model = list()) {
+
+  # Call constructor
+  new_lm(
+    x = list(),
+    names = list(
+      coefficients = coefficients,
+      residuals = residuals,
+      effects = effects,
+      rank = rank,
+      fitted.values = fitted.values,
+      assign = assign,
+      qr = qr,
+      df.residual = df.residual,
+      xlevels = xlevels,
+      call = call,
+      terms = terms,
+      model = model
+    )
+  ) %>%
+    # Call validator
+    validator_lm(x = .)
+}
+```
+
+---
+
+Another solution:
+
+```{r}
+new_lm <- function(coefficients, residuals, effects, rank, fitted.values, assign,
+                   qr, df.residual, xlevels, call, terms, model) {
+  stopifnot(
+    is.double(coefficients), is.double(residuals),
+    is.double(effects), is.integer(rank), is.double(fitted.values),
+    is.integer(assign), is.list(qr), is.integer(df.residual),
+    is.list(xlevels), is.language(call), is.language(terms),
+    is.list(model)
+  )
+
+  structure(
+    list(
+      coefficients = coefficients,
+      residuals = residuals,
+      effects = effects,
+      rank = rank,
+      fitted.values = fitted.values,
+      assign = assign,
+      qr = qr,
+      df.residual = df.residual,
+      xlevels = xlevels,
+      call = call,
+      terms = terms,
+      model = model
+    ),
+    class = "lm"
+  )
+}
+```

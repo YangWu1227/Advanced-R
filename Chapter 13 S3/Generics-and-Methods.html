@@ -12,7 +12,7 @@
 <meta name="author" content="Yang Wu" />
 
 
-<title>Basics</title>
+<title>Generics and Methods</title>
 
 <script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
 // be compatible with the behavior of Pandoc < 2.8).
@@ -1505,370 +1505,791 @@ div.tocify {
 
 
 
-<h1 class="title toc-ignore">Basics</h1>
+<h1 class="title toc-ignore">Generics and Methods</h1>
 <h4 class="author">Yang Wu</h4>
-<h4 class="date">10/4/2021</h4>
+<h4 class="date">10/6/2021</h4>
 
 </div>
 
 
-<div id="basics" class="section level1">
-<h1>Basics</h1>
-<p>A class defines a type of object, describing what properties it possesses, how it behaves, and how it relates to other types of objects. Every object must be an instance of some class. An <strong>S3</strong> object is a base type with <em>at least</em> a <strong>class</strong> attribute (other attributes may be used to store other data):</p>
-<pre class="r"><code># Factor is an S3 vector
-f &lt;- factor(x = c(&quot;a&quot;, &quot;b&quot;, &quot;c&quot;))
-# A factor has a base type integer
-typeof(f)</code></pre>
-<pre><code>## [1] &quot;integer&quot;</code></pre>
-<pre class="r"><code># It has a class attribute
-attr(x = f, which = &quot;class&quot;, exact = FALSE)</code></pre>
-<pre><code>## [1] &quot;factor&quot;</code></pre>
-<pre class="r"><code>attr(x = f, which = &quot;levels&quot;, exact = FALSE)</code></pre>
-<pre><code>## [1] &quot;a&quot; &quot;b&quot; &quot;c&quot;</code></pre>
-<pre class="r"><code># Or, equivalently
-attributes(x = f)</code></pre>
-<pre><code>## $levels
-## [1] &quot;a&quot; &quot;b&quot; &quot;c&quot;
-## 
-## $class
-## [1] &quot;factor&quot;</code></pre>
-<p>We can strip the class attribute using <code>unclass()</code> which causes the object to lose its special behavior whenever its passed to a generic function:</p>
-<pre class="r"><code>unclass(x = f)</code></pre>
-<pre><code>## [1] 1 2 3
-## attr(,&quot;levels&quot;)
-## [1] &quot;a&quot; &quot;b&quot; &quot;c&quot;</code></pre>
-<p>The <strong>class</strong> of an object is determined by its class attribute, a character vector of class names. The following example shows how to create an object of class <code>foo</code>:</p>
-<pre class="r"><code># First way
-x &lt;- 1
-attr(x, &quot;class&quot;) &lt;- &quot;foo&quot;
-x</code></pre>
-<pre><code>## [1] 1
-## attr(,&quot;class&quot;)
-## [1] &quot;foo&quot;</code></pre>
-<pre class="r"><code># Or, alternatively
-x &lt;- structure(.Data = 1, class = &quot;foo&quot;)
-x</code></pre>
-<pre><code>## [1] 1
-## attr(,&quot;class&quot;)
-## [1] &quot;foo&quot;</code></pre>
-<p>Objects are not limited to a single class, and can have many classes:</p>
-<pre class="r"><code># One way to modify
-class(x) &lt;- letters[1:4]
-class(x)</code></pre>
-<pre><code>## [1] &quot;a&quot; &quot;b&quot; &quot;c&quot; &quot;d&quot;</code></pre>
-<pre class="r"><code># Another way to modify class attribute
-attr(x, which = &quot;class&quot;) &lt;- c(&quot;Ken&quot;, &quot;Wu&quot;)
-x</code></pre>
-<pre><code>## [1] 1
-## attr(,&quot;class&quot;)
-## [1] &quot;Ken&quot; &quot;Wu&quot;</code></pre>
-<p>An S3 object behaves differently from its underlying base type whenever it is passed to a generic function. Use <code>sloop::ftype()</code> to check for generic functions:</p>
-<pre class="r"><code>ftype(f = print)</code></pre>
-<pre><code>## [1] &quot;S3&quot;      &quot;generic&quot;</code></pre>
-<pre class="r"><code>ftype(f = str)</code></pre>
-<pre><code>## [1] &quot;S3&quot;      &quot;generic&quot;</code></pre>
-<pre class="r"><code>ftype(f = sum)</code></pre>
-<pre><code>## [1] &quot;primitive&quot; &quot;generic&quot;</code></pre>
-<pre class="r"><code>ftype(f = unclass)</code></pre>
-<pre><code>## [1] &quot;primitive&quot;</code></pre>
-<p>A generic function defines an interface, which uses different implementation depending on the class of an argument. The generic has the job of defining the interface (the arguments) before finding the right implementation for the operation. The implementation for a specific class is called a <strong>method</strong>, and the generic finds that method by performing <strong>method dispatch</strong>. This process can be captured using <code>sloop::s3_dispatch()</code>:</p>
-<pre class="r"><code>s3_dispatch(call = print(f))</code></pre>
-<pre><code>## =&gt; print.factor
-##  * print.default</code></pre>
-<p>Note that S3 methods are functions with a special naming scheme <code>generic.class()</code>. As can be seen, the method for class <code>factor</code> is <code>print.factor</code>. Generally, this naming scheme, i.e., the presence of “.”, can be used to identify an S3 method. To be sure, use <code>sloop::ftype()</code>:</p>
-<pre class="r"><code># Generic
-ftype(t.test)</code></pre>
-<pre><code>## [1] &quot;S3&quot;      &quot;generic&quot;</code></pre>
-<pre class="r"><code># S3 methods
-ftype(t.data.frame)</code></pre>
-<pre><code>## [1] &quot;S3&quot;     &quot;method&quot;</code></pre>
-<pre class="r"><code>ftype(print.factor)</code></pre>
-<pre><code>## [1] &quot;S3&quot;     &quot;method&quot;</code></pre>
-<pre class="r"><code>ftype(print.Date)</code></pre>
-<pre><code>## [1] &quot;S3&quot;     &quot;method&quot;</code></pre>
-<p>The function <code>s3_dispatch()</code> prints a list of all possible function names that will be considered for method dispatch. There are four possible states:</p>
+<div id="introduction" class="section level2">
+<h2>Introduction</h2>
+<p>The S3 generic function performs <strong>method dispatch</strong>, that is, finding the specific implementation for a given class. Method dispatch is performed by <code>UseMethod()</code>, which is a primitive function. Every generic with the exception of internal (primitive) generics calls <code>UseMethod()</code> when performing method dispatch. The function has two arguments:</p>
 <ul>
-<li><p>=&gt; method exists and is found by UseMethod().</p></li>
-<li><p>-&gt; method exists and is used by NextMethod().</p></li>
-<li><p><code>*</code> method exists but is not used.</p></li>
-<li><p>Nothing (and grayed out in console): method does not exist.</p></li>
+<li><p>“generic” is a character string naming a function (and not a built-in operator) and is required</p></li>
+<li><p>“object” is an object whose class will determine the method to be dispatched and this defaults to the first argument if it is not supplied</p></li>
 </ul>
-<p>Unlike most functions, you can’t see the source code for most S3 methods (except for methods that are found in the base package such as <code>print</code> or <code>t</code>) just by typing their names. That’s because S3 methods are not usually exported: they live only inside the package, and are not available from the global environment. Instead, use <code>sloop::s3_get_method()</code>, which will work regardless of where the method lives:</p>
-<pre class="r"><code># S3 methods that can be accessed using sloop
-s3_get_method(name = weighted.mean.Date)</code></pre>
-<pre><code>## function (x, w, ...) 
-## .Date(weighted.mean(unclass(x), w, ...))
-## &lt;bytecode: 0x7fdffba3efa0&gt;
-## &lt;environment: namespace:stats&gt;</code></pre>
-<p>We can find all S3 methods from the base package as follows:</p>
-<pre class="r"><code># Get the names of all the base package functions
-objs &lt;- mget(ls(name = &quot;package:base&quot;, all.names = TRUE), inherits = TRUE) %&gt;% names()
-# Get all names that returns TRUE using is_s3_method()
-# Use safely in case is_s3_method() fails for one of the function names in &quot;objs&quot;
-# Transpose to get all the results and NULL separately
-s3_methods &lt;- purrr::map(.x = objs, .f = purrr::safely(.f = is_s3_method)) %&gt;% purrr::transpose()
-# Find all results where is_s3_method() failed
-s3_methods_failed &lt;- objs[!purrr::map_lgl(.x = s3_methods[[&quot;error&quot;]], .f = is.null)]
-# Find all results where is_s3_method() returns TRUE
-# These are some of the S3 methods in the base package
-s3_methods_worked &lt;- objs[purrr::map_lgl(.x = s3_methods[[&quot;result&quot;]], .f = isTRUE)]
-# Get these base S3 methods in a list
-s3_methods_list &lt;- mget(ls(name = &quot;package:base&quot;, all.names = TRUE), inherits = TRUE)[s3_methods_worked]
-# Examine the first and last S3 methods
-s3_methods_list[c(1, length(s3_methods_list))]</code></pre>
-<pre><code>## $`-.Date`
-## function (e1, e2) 
-## {
-##     coerceTimeUnit &lt;- function(x) as.vector(round(switch(attr(x, 
-##         &quot;units&quot;), secs = x/86400, mins = x/1440, hours = x/24, 
-##         days = x, weeks = 7 * x)))
-##     if (!inherits(e1, &quot;Date&quot;)) 
-##         stop(&quot;can only subtract from \&quot;Date\&quot; objects&quot;)
-##     if (nargs() == 1L) 
-##         stop(&quot;unary - is not defined for \&quot;Date\&quot; objects&quot;)
-##     if (inherits(e2, &quot;Date&quot;)) 
-##         return(difftime(e1, e2, units = &quot;days&quot;))
-##     if (inherits(e2, &quot;difftime&quot;)) 
-##         e2 &lt;- coerceTimeUnit(e2)
-##     if (!is.null(attr(e2, &quot;class&quot;))) 
-##         stop(&quot;can only subtract numbers from \&quot;Date\&quot; objects&quot;)
-##     .Date(unclass(as.Date(e1)) - e2)
-## }
-## &lt;bytecode: 0x7fdff8921980&gt;
-## &lt;environment: namespace:base&gt;
-## 
-## $xtfrm.POSIXlt
-## function (x) 
-## as.double(x)
-## &lt;bytecode: 0x7fdff9dd1e88&gt;
+<p>When a function calling <code>UseMethod(&quot;fun&quot;)</code> is applied to an object with class attribute <code>c(&quot;first&quot;, &quot;second&quot;)</code>, the system searches for a function called <code>fun.first</code> and, if it finds it, applies it to the object. If no such function is found a function called <code>fun.second</code> is tried. If no class name in <code>c(&quot;first&quot;, &quot;second&quot;)</code> produces a suitable function, the function <code>fun.default</code> is used, if it exists, or an error results.</p>
+<pre class="r"><code>print</code></pre>
+<pre><code>## function (x, ...) 
+## UseMethod(&quot;print&quot;)
+## &lt;bytecode: 0x7fb673f13c28&gt;
 ## &lt;environment: namespace:base&gt;</code></pre>
+<p>When <code>print()</code> is called on an object, for instance <code>matrix(1:20, 2)</code>, the class attribute <code>x(&quot;matrix&quot; &quot;array&quot;)</code>, the base type <code>c(&quot;integer&quot;)</code>, and the mode <code>c(&quot;numeric&quot;)</code> for this base object is used for method dispatch. Since neither of those functions <code>print.matrix</code>, <code>print.integer</code>, and <code>print.numeric</code> are found, <code>print.default</code> is used:</p>
+<pre class="r"><code>s3_dispatch(call = print(matrix(1:20, 2)))</code></pre>
+<pre><code>##    print.matrix
+##    print.integer
+##    print.numeric
+## =&gt; print.default</code></pre>
+<hr />
+</div>
+<div id="method-dispatch" class="section level1">
+<h1>Method dispatch</h1>
+<p>Essentially, <code>UseMethod()</code> creates a vector of method names:</p>
+<pre class="r"><code># Classes of x
+x &lt;- 1L
+s3_class(x)</code></pre>
+<pre><code>## [1] &quot;integer&quot; &quot;numeric&quot;</code></pre>
+<pre class="r"><code># Create vector of method names
+paste0(&quot;generic&quot;, &quot;.&quot;, c(s3_class(x), &quot;default&quot;))</code></pre>
+<pre><code>## [1] &quot;generic.integer&quot; &quot;generic.numeric&quot; &quot;generic.default&quot;</code></pre>
+<p>Another example:</p>
+<pre class="r"><code># Object
+x &lt;- Sys.Date()
+# Class
+s3_class(x)</code></pre>
+<pre><code>## [1] &quot;Date&quot;</code></pre>
+<pre class="r"><code># Method dispatch
+s3_dispatch(call = print(x))</code></pre>
+<pre><code>## =&gt; print.Date
+##  * print.default</code></pre>
+<ul>
+<li><code>=&gt;</code> indicates the method that is called, here <code>print.Date()</code></li>
+<li><code>*</code> indicates a method that is defined, but not called, here <code>print.default()</code></li>
+</ul>
+<p>The “default” class is a special <strong>pseudo-class</strong>. This is not a real class, but is included to make it possible to define a standard fallback that is found whenever a class-specific method is not available.</p>
+<hr />
+</div>
+<div id="finding-methods" class="section level1">
+<h1>Finding methods</h1>
+<p>Find some base package S3 generic functions:</p>
+<pre class="r"><code># Base R functions
+base_fn &lt;- mget(x = ls(name = &quot;package:base&quot;, all.names = TRUE), inherits = TRUE)
+# Define a function to test whether a function is a S3 generic
+test_fn &lt;- function(x) {
+  identical(ftype(x), c(&quot;S3&quot;, &quot;generic&quot;))
+}
+test_fn_safe &lt;- safely(test_fn)
+# Store results
+results &lt;- purrr::map(.x = base_fn, .f = test_fn_safe) %&gt;% purrr::transpose()
+# Create index
+index &lt;- purrr::map_lgl(.x = results[[&quot;result&quot;]], .f = isTRUE)
+# Subset to select S3 generic functions
+base_fn %&gt;%
+  names() %&gt;%
+  `[`(index)</code></pre>
+<pre><code>##  [1] &quot;all.equal&quot;                &quot;anyDuplicated&quot;           
+##  [3] &quot;aperm&quot;                    &quot;as.array&quot;                
+##  [5] &quot;as.data.frame&quot;            &quot;as.Date&quot;                 
+##  [7] &quot;as.expression&quot;            &quot;as.function&quot;             
+##  [9] &quot;as.list&quot;                  &quot;as.matrix&quot;               
+## [11] &quot;as.null&quot;                  &quot;as.POSIXct&quot;              
+## [13] &quot;as.POSIXlt&quot;               &quot;as.single&quot;               
+## [15] &quot;as.table&quot;                 &quot;by&quot;                      
+## [17] &quot;chol&quot;                     &quot;close&quot;                   
+## [19] &quot;conditionCall&quot;            &quot;conditionMessage&quot;        
+## [21] &quot;cut&quot;                      &quot;determinant&quot;             
+## [23] &quot;diff&quot;                     &quot;droplevels&quot;              
+## [25] &quot;duplicated&quot;               &quot;flush&quot;                   
+## [27] &quot;format&quot;                   &quot;getDLLRegisteredRoutines&quot;
+## [29] &quot;intersect&quot;                &quot;is.na&lt;-&quot;                 
+## [31] &quot;isSymmetric&quot;              &quot;julian&quot;                  
+## [33] &quot;kappa&quot;                    &quot;labels&quot;                  
+## [35] &quot;levels&quot;                   &quot;mean&quot;                    
+## [37] &quot;merge&quot;                    &quot;months&quot;                  
+## [39] &quot;open&quot;                     &quot;plot&quot;                    
+## [41] &quot;pretty&quot;                   &quot;print&quot;                   
+## [43] &quot;qr&quot;                       &quot;quarters&quot;                
+## [45] &quot;rev&quot;                      &quot;row.names&quot;               
+## [47] &quot;row.names&lt;-&quot;              &quot;rowsum&quot;                  
+## [49] &quot;scale&quot;                    &quot;seek&quot;                    
+## [51] &quot;seq&quot;                      &quot;sequence&quot;                
+## [53] &quot;setdiff&quot;                  &quot;setequal&quot;                
+## [55] &quot;solve&quot;                    &quot;sort&quot;                    
+## [57] &quot;split&quot;                    &quot;split&lt;-&quot;                 
+## [59] &quot;subset&quot;                   &quot;summary&quot;                 
+## [61] &quot;t&quot;                        &quot;toString&quot;                
+## [63] &quot;transform&quot;                &quot;truncate&quot;                
+## [65] &quot;union&quot;                    &quot;unique&quot;                  
+## [67] &quot;units&quot;                    &quot;units&lt;-&quot;                 
+## [69] &quot;weekdays&quot;                 &quot;with&quot;                    
+## [71] &quot;within&quot;</code></pre>
+<p>We can use <code>s3_methods_generic(x)</code> and <code>s3_methods_class(x)</code> where x is the name of class or generic.</p>
+<pre class="r"><code># Check all methods defined for a given generic
+s3_methods_generic(&quot;mean&quot;)</code></pre>
+<pre><code>## # A tibble: 7 × 4
+##   generic class      visible source             
+##   &lt;chr&gt;   &lt;chr&gt;      &lt;lgl&gt;   &lt;chr&gt;              
+## 1 mean    Date       TRUE    base               
+## 2 mean    default    TRUE    base               
+## 3 mean    difftime   TRUE    base               
+## 4 mean    POSIXct    TRUE    base               
+## 5 mean    POSIXlt    TRUE    base               
+## 6 mean    quosure    FALSE   registered S3method
+## 7 mean    vctrs_vctr FALSE   registered S3method</code></pre>
+<pre class="r"><code>s3_methods_generic(&quot;solve&quot;)</code></pre>
+<pre><code>## # A tibble: 2 × 4
+##   generic class   visible source
+##   &lt;chr&gt;   &lt;chr&gt;   &lt;lgl&gt;   &lt;chr&gt; 
+## 1 solve   default TRUE    base  
+## 2 solve   qr      TRUE    base</code></pre>
+<pre class="r"><code>s3_methods_generic(&quot;within&quot;)</code></pre>
+<pre><code>## # A tibble: 2 × 4
+##   generic class      visible source
+##   &lt;chr&gt;   &lt;chr&gt;      &lt;lgl&gt;   &lt;chr&gt; 
+## 1 within  data.frame TRUE    base  
+## 2 within  list       TRUE    base</code></pre>
+<pre class="r"><code># Check all generics that have been provided methods for a given class
+s3_methods_class(&quot;Date&quot;)</code></pre>
+<pre><code>## # A tibble: 46 × 4
+##    generic class visible source             
+##    &lt;chr&gt;   &lt;chr&gt; &lt;lgl&gt;   &lt;chr&gt;              
+##  1 -       Date  TRUE    base               
+##  2 !=      Date  FALSE   registered S3method
+##  3 [       Date  TRUE    base               
+##  4 [[      Date  TRUE    base               
+##  5 [&lt;-     Date  TRUE    base               
+##  6 +       Date  TRUE    base               
+##  7 &lt;       Date  FALSE   registered S3method
+##  8 &lt;=      Date  FALSE   registered S3method
+##  9 ==      Date  FALSE   registered S3method
+## 10 &gt;       Date  FALSE   registered S3method
+## # … with 36 more rows</code></pre>
+<pre class="r"><code>s3_methods_class(&quot;roman&quot;)</code></pre>
+<pre><code>## # A tibble: 7 × 4
+##   generic      class visible source             
+##   &lt;chr&gt;        &lt;chr&gt; &lt;lgl&gt;   &lt;chr&gt;              
+## 1 [            roman FALSE   registered S3method
+## 2 as.character roman FALSE   registered S3method
+## 3 format       roman FALSE   registered S3method
+## 4 Ops          roman FALSE   registered S3method
+## 5 print        roman FALSE   registered S3method
+## 6 rep          roman FALSE   registered S3method
+## 7 Summary      roman FALSE   registered S3method</code></pre>
+<pre class="r"><code>s3_methods_class(&quot;factor&quot;)</code></pre>
+<pre><code>## # A tibble: 32 × 4
+##    generic       class  visible source             
+##    &lt;chr&gt;         &lt;chr&gt;  &lt;lgl&gt;   &lt;chr&gt;              
+##  1 [             factor TRUE    base               
+##  2 [[            factor TRUE    base               
+##  3 [[&lt;-          factor TRUE    base               
+##  4 [&lt;-           factor TRUE    base               
+##  5 all.equal     factor TRUE    base               
+##  6 as_factor     factor FALSE   registered S3method
+##  7 as.character  factor TRUE    base               
+##  8 as.data.frame factor TRUE    base               
+##  9 as.Date       factor TRUE    base               
+## 10 as.list       factor TRUE    base               
+## # … with 22 more rows</code></pre>
 <hr />
 </div>
 <div id="exercises" class="section level1">
 <h1>Exercises</h1>
 <div id="exercise-1" class="section level2">
 <h2>Exercise 1</h2>
-<p>Describe the difference between <code>t.test()</code> and <code>t.data.frame()</code>? When is each function called?</p>
-<p>The <code>t.test()</code> function is a generic function from the <code>stats</code> package:</p>
-<pre class="r"><code>ftype(f = t.test)</code></pre>
-<pre><code>## [1] &quot;S3&quot;      &quot;generic&quot;</code></pre>
-<p>The method dispatch process can be tracked as follows:</p>
-<pre class="r"><code>s3_dispatch(call = t.test(x = 1:10, y = c(7:20)))</code></pre>
-<pre><code>##    t.test.integer
-##    t.test.numeric
-## =&gt; t.test.default</code></pre>
-<p>This is the default S3 method used when both <code>x</code> and <code>y</code> are supplied as numeric vectors. The S3 method for class “formula” is used when the interface is an S3 formula object:</p>
-<pre class="r"><code># Create object
-formula_object &lt;- y ~ x
-# Object type
-otype(x = formula_object)</code></pre>
-<pre><code>## [1] &quot;S3&quot;</code></pre>
-<pre class="r"><code># Class of this object
-class(x = formula_object)</code></pre>
-<pre><code>## [1] &quot;formula&quot;</code></pre>
-<pre class="r"><code># Method dispatch finds the right S3 methods for this object with class &quot;formula&quot;
-# The method is t.test.formula()
-s3_dispatch(call = t.test(extra ~ group, data = sleep))</code></pre>
-<pre><code>## =&gt; t.test.formula
-##  * t.test.default</code></pre>
-<hr />
-<p>One the other hands, <code>t.data.frame()</code> is an S3 method:</p>
-<pre class="r"><code># Function type
-ftype(t.data.frame)</code></pre>
-<pre><code>## [1] &quot;S3&quot;     &quot;method&quot;</code></pre>
-<pre class="r"><code># Get method
-s3_get_method(name = t.data.frame)</code></pre>
-<pre><code>## function (x) 
-## {
-##     x &lt;- as.matrix(x)
-##     NextMethod(&quot;t&quot;)
-## }
-## &lt;bytecode: 0x7fdff923f760&gt;
-## &lt;environment: namespace:base&gt;</code></pre>
-<p>The source code of <code>t.data.frame()</code> shows that it uses <code>NextMethod</code> which performs method dispatch based on the class(es) of the object supplied as an argument to it.</p>
+<p>What generics does the <code>table</code> class have methods for?</p>
+<pre class="r"><code>s3_methods_class(x = &quot;table&quot;)</code></pre>
+<pre><code>## # A tibble: 11 × 4
+##    generic       class visible source             
+##    &lt;chr&gt;         &lt;chr&gt; &lt;lgl&gt;   &lt;chr&gt;              
+##  1 [             table TRUE    base               
+##  2 aperm         table TRUE    base               
+##  3 as_tibble     table FALSE   registered S3method
+##  4 as.data.frame table TRUE    base               
+##  5 Axis          table FALSE   registered S3method
+##  6 lines         table FALSE   registered S3method
+##  7 plot          table FALSE   registered S3method
+##  8 points        table FALSE   registered S3method
+##  9 print         table TRUE    base               
+## 10 summary       table TRUE    base               
+## 11 tail          table FALSE   registered S3method</code></pre>
+<p>As an example, when an object of class <code>class</code> is passed to the generic function <code>plot()</code>, <code>plot.table()</code> is used:</p>
+<pre class="r"><code>s3_dispatch(plot(table(sample(1:10, 20, replace = TRUE))))</code></pre>
+<pre><code>## =&gt; plot.table
+##  * plot.default</code></pre>
 <hr />
 </div>
-<div id="exercise-2" class="section level2">
-<h2>Exercise 2</h2>
-<p>Make a list of commonly used base R functions that contain “.” in their name but are not S3 methods.</p>
-<pre class="r"><code># All base R function names
-base_fn_nms &lt;- mget(x = ls(name = &quot;package:base&quot;, all.names = TRUE), inherits = TRUE) %&gt;% names()
-# Detect the presence of &quot;.&quot; in function names
-# This function is vectorized and so we do not need to apply it to every element of base_fn_nms
-# The . matches any character so escape . using \ to match . literally
-# The \ itself should also be escaped
-# There are 704 base function with . in their names
-str_detect(string = base_fn_nms, pattern = &quot;\\.&quot;, negate = FALSE) %&gt;% sum()</code></pre>
-<pre><code>## [1] 705</code></pre>
-<pre class="r"><code># Base functions with . in their names
-base_fn_dot_in_nms &lt;- base_fn_nms[str_detect(string = base_fn_nms, pattern = &quot;\\.&quot;, negate = FALSE)]
-# From this list of names, get all S3 methods
-s3_methods &lt;- purrr::map(
-  .x = base_fn_dot_in_nms,
-  .f = purrr::safely(.f = is_s3_method)
-) %&gt;% purrr::transpose()
-# Get all elements that worked
-# The index vector is created by finding all results where is_s3_method returns TRUE
-s3_methods_names &lt;- base_fn_dot_in_nms[purrr::map_lgl(.x = s3_methods[[&quot;result&quot;]], .f = isTRUE)]
-# Examine the first and last S3 method names
-s3_methods_names[c(1, length(s3_methods_names))]</code></pre>
-<pre><code>## [1] &quot;-.Date&quot;        &quot;xtfrm.POSIXlt&quot;</code></pre>
+<div id="exericse-2" class="section level2">
+<h2>Exericse 2</h2>
+<p>What generics does the <code>ecdf</code> class have methods for?</p>
+<pre class="r"><code>s3_methods_class(x = &quot;ecdf&quot;)</code></pre>
+<pre><code>## # A tibble: 4 × 4
+##   generic  class visible source             
+##   &lt;chr&gt;    &lt;chr&gt; &lt;lgl&gt;   &lt;chr&gt;              
+## 1 plot     ecdf  TRUE    stats              
+## 2 print    ecdf  FALSE   registered S3method
+## 3 quantile ecdf  FALSE   registered S3method
+## 4 summary  ecdf  FALSE   registered S3method</code></pre>
 <hr />
 </div>
 <div id="exercise-3" class="section level2">
 <h2>Exercise 3</h2>
-<p>What does the <code>as.data.frame.data.frame()</code> method do? Why is it confusing? How could you avoid this confusion in your own code?</p>
-<p>The <code>as.data.frame.data.frame()</code> method is an S3 method where the generic function is <code>as.data.frame</code>:</p>
-<pre class="r"><code>ftype(f = as.data.frame)</code></pre>
-<pre><code>## [1] &quot;S3&quot;      &quot;generic&quot;</code></pre>
-<p>And the class of the object that is <code>data.frame</code>:</p>
-<pre class="r"><code>class(x = data.frame())</code></pre>
-<pre><code>## [1] &quot;data.frame&quot;</code></pre>
-<p>The method dispatch process is as follows:</p>
-<pre class="r"><code># Data frame object
-df &lt;- data.frame()
-# Class
-class(df)</code></pre>
-<pre><code>## [1] &quot;data.frame&quot;</code></pre>
-<pre class="r"><code>attr(x = df, which = &quot;class&quot;, exact = TRUE)</code></pre>
-<pre><code>## [1] &quot;data.frame&quot;</code></pre>
-<pre class="r"><code># Method dispatch
-s3_dispatch(call = as.data.frame(df))</code></pre>
-<pre><code>## =&gt; as.data.frame.data.frame
-##  * as.data.frame.default</code></pre>
-<p>Here’s the object <code>df</code> has class <code>data.frame</code> and so the S3 naming scheme leads to the confusing name <code>as.data.frame.data.frame()</code> for this method. To avoid this, we can use different naming conventions to separate the generic and the class, e.g. <code>as.data.frame_data.frame()</code>.</p>
+<p>Which base generic has the greatest number of defined methods?</p>
+<pre class="r"><code># List all names in base environment
+# Character vector
+ls(all.names = TRUE, env = base::baseenv()) %&gt;%
+  # Search for list of names in the base environment
+  # List object
+  mget(x = ., envir = baseenv(), inherits = FALSE) %&gt;%
+  # Keep elements when purrr::is_function() returns TRUE
+  # List object
+  keep(.x = ., .p = is_function) %&gt;%
+  # Get the names of the functions
+  # Character vector
+  names() %&gt;%
+  # Keep names that return TRUE when passed to is_s3_generic()
+  # Character vector
+  keep(is_s3_generic) %&gt;%
+  # The function s3_methods_generic(x) returns a tibble for each function name
+  # The anonymous function returns a named integer vector each iteration of map
+  # The two components of these vectors are the function names and the number of rows in the tibble
+  # List object
+  map(.x = ., .f = ~ set_names(x = nrow(s3_methods_generic(.x)), nm = .x)) %&gt;%
+  # Flatten the list object from vertical to horizontal
+  flatten_int(.x = .) %&gt;%
+  # Sort
+  sort(decreasing = TRUE) %&gt;%
+  head(n = 5)</code></pre>
+<pre><code>##        print       format            [ as.character      summary 
+##          336          144           64           50           45</code></pre>
 <hr />
 </div>
 <div id="exercise-4" class="section level2">
 <h2>Exercise 4</h2>
-<p>Describe the difference in behavior in these two calls.</p>
-<pre class="r"><code># Create object
-# This broadcasts the length-5 integer vector onto the length-1 date vector
-# The returned object is a vector of length 5
-# Each element is a date equaling &quot;2017-01-31&quot; plus sample(10, 5)[[i]] number of days
-some_days &lt;- as.Date(&quot;2017-01-31&quot;) + sample(10, 5)
-# Object type
-otype(x = some_days)</code></pre>
-<pre><code>## [1] &quot;S3&quot;</code></pre>
-<pre class="r"><code># Base type
-typeof(x = some_days)</code></pre>
-<pre><code>## [1] &quot;double&quot;</code></pre>
-<pre class="r"><code># Class
-attributes(x = some_days)</code></pre>
-<pre><code>## $class
-## [1] &quot;Date&quot;</code></pre>
-<pre class="r"><code># Function type
-mean %&gt;% ftype()</code></pre>
-<pre><code>## [1] &quot;S3&quot;      &quot;generic&quot;</code></pre>
-<pre class="r"><code># Method dispatch
-s3_dispatch(call = mean(some_days))</code></pre>
-<pre><code>## =&gt; mean.Date
-##  * mean.default</code></pre>
-<pre class="r"><code>s3_dispatch(call = mean(unclass(some_days)))</code></pre>
-<pre><code>##    mean.double
-##    mean.numeric
-## =&gt; mean.default</code></pre>
-<pre class="r"><code># Results
-mean(some_days)</code></pre>
-<pre><code>## [1] &quot;2017-02-04&quot;</code></pre>
-<pre class="r"><code>mean(unclass(some_days))</code></pre>
-<pre><code>## [1] 17201.6</code></pre>
-<p>As can be seen, when we unclass the object with class <code>Date</code>, it behaves differently when passed to the S3 generic function <code>mean</code>. Unclassing <code>some_days</code> returns the atomic double vector, which uses the <code>mean.default()</code> method. When the object with class <code>Date</code> is passed to the <code>mean</code> function, the method <code>mean.Date()</code> is used.</p>
+<p>Carefully read the documentation for <code>UseMethod()</code> and explain why the following code returns the results that it does. What two usual rules of function evaluation does <code>UseMethod()</code> violate?</p>
+<pre class="r"><code># Define g
+g &lt;- function(x) {
+  x &lt;- 10
+  y &lt;- 10
+  UseMethod(&quot;g&quot;)
+}
+# Define method
+g.default &lt;- function(x) c(x = x, y = y)
+# Bindings in global environment
+x &lt;- 1
+y &lt;- 5
+# Method dispatch
+s3_dispatch(call = g(x))</code></pre>
+<pre><code>##    g.double
+##    g.numeric
+## =&gt; g.default</code></pre>
+<pre class="r"><code># Call g
+g(x)</code></pre>
+<pre><code>##  x  y 
+##  1 10</code></pre>
+<p>The rule that <code>UseMethod()</code> breaks is name-masking. Normally, names defined inside the function should mask names defined outside. In other words, the bindings <code>x &lt;- 10</code> and <code>y &lt;- 10</code> inside <code>g()</code> should mask those defined outside— <code>x &lt;- 1</code> and <code>y &lt;- 1</code>. However, <code>g(x)</code> returns <code>c(1, 10)</code>, which means that the value of <code>x</code> is scoped from the global environment while that of <code>y</code> is scoped from within the generic function <code>g()</code>. Why?</p>
+<ul>
+<li>When <code>UseMethod(&quot;g&quot;)</code> is called within <code>g()</code>, method dispatch is performed and <code>g.default()</code> is called. Since <code>g.default()</code> is defined in the global environment, it binds or encloses the global environment; this is where <code>g.default()</code> scopes for the value of its argument <code>x</code>. Thus, the binding <code>x &lt;- 1</code> is used. The argument supplied to the function <code>g()</code> is passed on as is and cannot be affected by code inside the generic. Since the binding <code>x &lt;- 1</code> already exists in the enclosing environment of <code>g.default()</code>, <code>x &lt;- 10</code> defined within the generic is masked.</li>
+</ul>
 <hr />
 </div>
 <div id="exercise-5" class="section level2">
 <h2>Exercise 5</h2>
-<p>What class of object does the following code return? What base type is it built on? What attributes does it use?</p>
+<p>What are the arguments to <code>[</code>? Why is this a hard question to answer?</p>
+<pre class="r"><code># Function type
+ftype(`[`)</code></pre>
+<pre><code>## [1] &quot;primitive&quot; &quot;generic&quot;</code></pre>
+<pre class="r"><code># Source code
+pryr::show_c_source(.Primitive(&quot;[&quot;))</code></pre>
+<pre><code>## [ is implemented by do_subset with op = 1</code></pre>
+<pre><code>## Please visit https://github.com/search?q=SEXP%20attribute_hidden%20do_subset+repo:wch/r-source&amp;type=Code</code></pre>
+<pre class="r"><code># Get methods for this generic
+s3_methods_generic(&quot;[&quot;) %&gt;%
+  # Keep only those methods that are exported
+  filter(.data = ., visible == TRUE)</code></pre>
+<pre><code>## # A tibble: 17 × 4
+##    generic class           visible source
+##    &lt;chr&gt;   &lt;chr&gt;           &lt;lgl&gt;   &lt;chr&gt; 
+##  1 [       AsIs            TRUE    base  
+##  2 [       data.frame      TRUE    base  
+##  3 [       Date            TRUE    base  
+##  4 [       difftime        TRUE    base  
+##  5 [       Dlist           TRUE    base  
+##  6 [       DLLInfoList     TRUE    base  
+##  7 [       factor          TRUE    base  
+##  8 [       hexmode         TRUE    base  
+##  9 [       listof          TRUE    base  
+## 10 [       noquote         TRUE    base  
+## 11 [       numeric_version TRUE    base  
+## 12 [       octmode         TRUE    base  
+## 13 [       POSIXct         TRUE    base  
+## 14 [       POSIXlt         TRUE    base  
+## 15 [       simple.list     TRUE    base  
+## 16 [       table           TRUE    base  
+## 17 [       warnings        TRUE    base</code></pre>
+<hr />
+</div>
+</div>
+<div id="object-styles" class="section level1">
+<h1>Object styles</h1>
+<p>Vector style classes have the key property that <code>length(x)</code> represents the number of observations in the vector. Some other variants do not have this property:</p>
+<ul>
+<li>Record style objects use a list of equal-length vectors to represent individual components of the object.The best example of this is POSIXlt, which underneath the hood is a list of 11 date-time components like year, month, and day. Record style classes override length() and subsetting methods to conceal this implementation detail.</li>
+</ul>
 <pre class="r"><code># Object
-x &lt;- ecdf(rpois(100, 10))
+x &lt;- as.POSIXlt(ISOdatetime(2020, 1, 1, 0, 0, 1:3))
+x</code></pre>
+<pre><code>## [1] &quot;2020-01-01 00:00:01 EST&quot; &quot;2020-01-01 00:00:02 EST&quot;
+## [3] &quot;2020-01-01 00:00:03 EST&quot;</code></pre>
+<pre class="r"><code># Length
+length(x)</code></pre>
+<pre><code>## [1] 3</code></pre>
+<pre class="r"><code># Unclass results in a list of 11 elements, each of which is a date-time component
+unclass(x)</code></pre>
+<pre><code>## $sec
+## [1] 1 2 3
+## 
+## $min
+## [1] 0 0 0
+## 
+## $hour
+## [1] 0 0 0
+## 
+## $mday
+## [1] 1 1 1
+## 
+## $mon
+## [1] 0 0 0
+## 
+## $year
+## [1] 120 120 120
+## 
+## $wday
+## [1] 3 3 3
+## 
+## $yday
+## [1] 0 0 0
+## 
+## $isdst
+## [1] 0 0 0
+## 
+## $zone
+## [1] &quot;EST&quot; &quot;EST&quot; &quot;EST&quot;
+## 
+## $gmtoff
+## [1] -18000 -18000 -18000
+## 
+## attr(,&quot;tzone&quot;)
+## [1] &quot;&quot;    &quot;EST&quot; &quot;EDT&quot;</code></pre>
+<pre class="r"><code># First date-time object
+x[[1]]</code></pre>
+<pre><code>## [1] &quot;2020-01-01 00:00:01 EST&quot;</code></pre>
+<pre class="r"><code># Class
+x[[1]] %&gt;% class()</code></pre>
+<pre><code>## [1] &quot;POSIXlt&quot; &quot;POSIXt&quot;</code></pre>
+<pre class="r"><code># This object is a list under the hood
+x[[1]] %&gt;% unclass()</code></pre>
+<pre><code>## $sec
+## [1] 1
+## 
+## $min
+## [1] 0
+## 
+## $hour
+## [1] 0
+## 
+## $mday
+## [1] 1
+## 
+## $mon
+## [1] 0
+## 
+## $year
+## [1] 120
+## 
+## $wday
+## [1] 3
+## 
+## $yday
+## [1] 0
+## 
+## $isdst
+## [1] 0
+## 
+## $zone
+## [1] &quot;EST&quot;
+## 
+## $gmtoff
+## [1] -18000
+## 
+## attr(,&quot;tzone&quot;)
+## [1] &quot;&quot;    &quot;EST&quot; &quot;EDT&quot;</code></pre>
+<hr />
+<ul>
+<li>Data frames are similar to record style objects in that both use lists of equal length vectors.</li>
+</ul>
+<pre class="r"><code># Object
+x &lt;- data.frame(x = 1:100, y = 1:100)
+# Length
+length(x)</code></pre>
+<pre><code>## [1] 2</code></pre>
+<pre class="r"><code># Unclass
+x %&gt;% unclass()</code></pre>
+<pre><code>## $x
+##   [1]   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15  16  17  18
+##  [19]  19  20  21  22  23  24  25  26  27  28  29  30  31  32  33  34  35  36
+##  [37]  37  38  39  40  41  42  43  44  45  46  47  48  49  50  51  52  53  54
+##  [55]  55  56  57  58  59  60  61  62  63  64  65  66  67  68  69  70  71  72
+##  [73]  73  74  75  76  77  78  79  80  81  82  83  84  85  86  87  88  89  90
+##  [91]  91  92  93  94  95  96  97  98  99 100
+## 
+## $y
+##   [1]   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15  16  17  18
+##  [19]  19  20  21  22  23  24  25  26  27  28  29  30  31  32  33  34  35  36
+##  [37]  37  38  39  40  41  42  43  44  45  46  47  48  49  50  51  52  53  54
+##  [55]  55  56  57  58  59  60  61  62  63  64  65  66  67  68  69  70  71  72
+##  [73]  73  74  75  76  77  78  79  80  81  82  83  84  85  86  87  88  89  90
+##  [91]  91  92  93  94  95  96  97  98  99 100
+## 
+## attr(,&quot;row.names&quot;)
+##   [1]   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15  16  17  18
+##  [19]  19  20  21  22  23  24  25  26  27  28  29  30  31  32  33  34  35  36
+##  [37]  37  38  39  40  41  42  43  44  45  46  47  48  49  50  51  52  53  54
+##  [55]  55  56  57  58  59  60  61  62  63  64  65  66  67  68  69  70  71  72
+##  [73]  73  74  75  76  77  78  79  80  81  82  83  84  85  86  87  88  89  90
+##  [91]  91  92  93  94  95  96  97  98  99 100</code></pre>
+<pre class="r"><code># length
+length(x %&gt;% unclass() %&gt;% `[[`(1))</code></pre>
+<pre><code>## [1] 100</code></pre>
+<hr />
+<ul>
+<li>Scalar objects typically use a list to represent a single thing. For example, an lm object is a list of length 12 but it represents one model.</li>
+</ul>
+<pre class="r"><code># Object
+mod &lt;- lm(mpg ~ wt, data = mtcars)
+# Length
+length(mod)</code></pre>
+<pre><code>## [1] 12</code></pre>
+<hr />
+</div>
+<div id="exercises-1" class="section level1">
+<h1>Exercises</h1>
+<div id="exercise-1-1" class="section level2">
+<h2>Exercise 1</h2>
+<p>Categorize the objects returned by <code>lm()</code>, <code>factor()</code>, <code>table()</code>, <code>as.Date()</code>, <code>as.POSIXct()</code>,<code>ecdf()</code>, <code>ordered()</code>, <code>I()</code> into the styles described above.</p>
+<ul>
+<li>Objects of class <code>lm</code> are scalar style</li>
+</ul>
+<pre class="r"><code># Object
+mod &lt;- lm(mpg ~ wt, data = mtcars)
+# Class
+class(mod)</code></pre>
+<pre><code>## [1] &quot;lm&quot;</code></pre>
+<pre class="r"><code># Base type
+mod %&gt;% typeof()</code></pre>
+<pre><code>## [1] &quot;list&quot;</code></pre>
+<ul>
+<li>Objects of class <code>factor</code> are vector style objects</li>
+</ul>
+<pre class="r"><code># Object
+x &lt;- factor(x = letters[1:10])
+# Class
+class(x)</code></pre>
+<pre><code>## [1] &quot;factor&quot;</code></pre>
+<pre class="r"><code># Unclass
+unclass(x)</code></pre>
+<pre><code>##  [1]  1  2  3  4  5  6  7  8  9 10
+## attr(,&quot;levels&quot;)
+##  [1] &quot;a&quot; &quot;b&quot; &quot;c&quot; &quot;d&quot; &quot;e&quot; &quot;f&quot; &quot;g&quot; &quot;h&quot; &quot;i&quot; &quot;j&quot;</code></pre>
+<ul>
+<li>Objects of class <code>table</code> are vector style objects</li>
+</ul>
+<pre class="r"><code># Object
+x &lt;- table(x = sample(x = 1:20, size = 50, replace = TRUE))
+x</code></pre>
+<pre><code>## x
+##  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 
+##  2  3  5  3  1  3  4  3  8  3  1  2  1  2  1  3  3  1  1</code></pre>
+<pre class="r"><code># Class
+class(x)</code></pre>
+<pre><code>## [1] &quot;table&quot;</code></pre>
+<pre class="r"><code># Unclass
+unclass(x)</code></pre>
+<pre><code>## x
+##  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 
+##  2  3  5  3  1  3  4  3  8  3  1  2  1  2  1  3  3  1  1</code></pre>
+<ul>
+<li>Objects of class <code>Date</code> are vector style objects</li>
+</ul>
+<pre class="r"><code># Object
+x &lt;- as.Date(x = &quot;2021-10-12&quot;)
+x</code></pre>
+<pre><code>## [1] &quot;2021-10-12&quot;</code></pre>
+<pre class="r"><code># Class
+class(x)</code></pre>
+<pre><code>## [1] &quot;Date&quot;</code></pre>
+<pre class="r"><code># Unclass
+unclass(x)</code></pre>
+<pre><code>## [1] 18912</code></pre>
+<ul>
+<li>Date time objects of classes <code>POSIXlt</code> and <code>POSIXct</code> are record style objects</li>
+</ul>
+<pre class="r"><code># Object
+x &lt;- as.POSIXlt(Sys.time(), &quot;America/New_York&quot;)
+x</code></pre>
+<pre><code>## [1] &quot;2022-02-27 06:08:46 EST&quot;</code></pre>
+<pre class="r"><code># Class
+class(x)</code></pre>
+<pre><code>## [1] &quot;POSIXlt&quot; &quot;POSIXt&quot;</code></pre>
+<pre class="r"><code># Unclass
+unclass(x)</code></pre>
+<pre><code>## $sec
+## [1] 46.13883
+## 
+## $min
+## [1] 8
+## 
+## $hour
+## [1] 6
+## 
+## $mday
+## [1] 27
+## 
+## $mon
+## [1] 1
+## 
+## $year
+## [1] 122
+## 
+## $wday
+## [1] 0
+## 
+## $yday
+## [1] 57
+## 
+## $isdst
+## [1] 0
+## 
+## $zone
+## [1] &quot;EST&quot;
+## 
+## $gmtoff
+## [1] -18000
+## 
+## attr(,&quot;tzone&quot;)
+## [1] &quot;America/New_York&quot; &quot;EST&quot;              &quot;EDT&quot;</code></pre>
+<ul>
+<li>Objects of class <code>ecdf</code> are cannot be categorized by any of the three categories— scalar, record style, and vector style</li>
+</ul>
+<pre class="r"><code># Object
+x &lt;- rnorm(12) %&gt;% ecdf()
 x</code></pre>
 <pre><code>## Empirical CDF 
-## Call: ecdf(rpois(100, 10))
-##  x[1:14] =      4,      5,      6,  ...,     16,     18</code></pre>
-<pre class="r"><code># Base type
-# This is a function object
-typeof(x = x)</code></pre>
-<pre><code>## [1] &quot;closure&quot;</code></pre>
-<pre class="r"><code># Object type
-# This is an S3 object
-otype(x = x)</code></pre>
-<pre><code>## [1] &quot;S3&quot;</code></pre>
+## Call: ecdf(.)
+##  x[1:12] = -1.5659, -1.4095, -1.1905,  ...,  1.773, 2.0718</code></pre>
 <pre class="r"><code># Class
-attributes(x)</code></pre>
+x %&gt;% attributes()</code></pre>
 <pre><code>## $class
 ## [1] &quot;ecdf&quot;     &quot;stepfun&quot;  &quot;function&quot;
 ## 
 ## $call
-## ecdf(rpois(100, 10))</code></pre>
-<p>The base type of object <code>x</code> is “closure”. The object is of the class <code>ecdf</code> (empirical cumulative distribution function) with super-classes “stepfun” and “function”. It also has a <code>call</code> attribute, which stores the function expression.</p>
-<hr />
-</div>
-<div id="exercise-6" class="section level2">
-<h2>Exercise 6</h2>
-<p>What class of object does the following code return? What base type is it built on? What attributes does it use?</p>
-<pre class="r"><code># Object
-x &lt;- table(rpois(n = 100, lambda = 5))
-x</code></pre>
-<pre><code>## 
-##  1  2  3  4  5  6  7  8  9 10 13 
-##  3 11 14 14 18 12  8 11  4  4  1</code></pre>
+## ecdf(.)</code></pre>
 <pre class="r"><code># Base type
-typeof(x = x)</code></pre>
-<pre><code>## [1] &quot;integer&quot;</code></pre>
-<pre class="r"><code># Object type
-# This is an S3 object
-otype(x = x)</code></pre>
-<pre><code>## [1] &quot;S3&quot;</code></pre>
-<pre class="r"><code># Class
-attributes(x)</code></pre>
-<pre><code>## $dim
-## [1] 11
-## 
-## $dimnames
-## $dimnames[[1]]
-##  [1] &quot;1&quot;  &quot;2&quot;  &quot;3&quot;  &quot;4&quot;  &quot;5&quot;  &quot;6&quot;  &quot;7&quot;  &quot;8&quot;  &quot;9&quot;  &quot;10&quot; &quot;13&quot;
-## 
+# First class function object
+typeof(x)</code></pre>
+<pre><code>## [1] &quot;closure&quot;</code></pre>
+<pre class="r"><code># Unclass
+unclass(x) %&gt;% attributes()</code></pre>
+<pre><code>## $call
+## ecdf(.)</code></pre>
+<ul>
+<li>Objects of classes c(<code>ordered</code>, <code>factor</code>) are vector style objects</li>
+</ul>
+<pre class="r"><code># Object
+x &lt;- ordered(letters[1:10])
+# Class
+x %&gt;% attributes()</code></pre>
+<pre><code>## $levels
+##  [1] &quot;a&quot; &quot;b&quot; &quot;c&quot; &quot;d&quot; &quot;e&quot; &quot;f&quot; &quot;g&quot; &quot;h&quot; &quot;i&quot; &quot;j&quot;
 ## 
 ## $class
-## [1] &quot;table&quot;</code></pre>
-<p>The object has base type <code>integer</code> and class <code>table</code>. The other attributes are:</p>
+## [1] &quot;ordered&quot; &quot;factor&quot;</code></pre>
+<pre class="r"><code># Unclass
+unclass(x)</code></pre>
+<pre><code>##  [1]  1  2  3  4  5  6  7  8  9 10
+## attr(,&quot;levels&quot;)
+##  [1] &quot;a&quot; &quot;b&quot; &quot;c&quot; &quot;d&quot; &quot;e&quot; &quot;f&quot; &quot;g&quot; &quot;h&quot; &quot;i&quot; &quot;j&quot;</code></pre>
 <ul>
-<li><p><code>dimnames</code> which stores all occured elements in the vector generated by <code>rpois(n = 100, lambda = 5)</code></p></li>
-<li><p><code>dim</code> which stores the number of unique elements that are observed in the vector generated by <code>rpois(n = 100, lambda = 5)</code></p></li>
+<li>Objects of classes <code>AsIs</code> can be any style depending on the argument to <code>I(x)</code></li>
 </ul>
+<pre class="r"><code># Object
+x &lt;- I(mtcars)
+y &lt;- I(as.Date(x = &quot;2021-10-12&quot;))
+# Class
+attributes(x)</code></pre>
+<pre><code>## $names
+##  [1] &quot;mpg&quot;  &quot;cyl&quot;  &quot;disp&quot; &quot;hp&quot;   &quot;drat&quot; &quot;wt&quot;   &quot;qsec&quot; &quot;vs&quot;   &quot;am&quot;   &quot;gear&quot;
+## [11] &quot;carb&quot;
+## 
+## $row.names
+##  [1] &quot;Mazda RX4&quot;           &quot;Mazda RX4 Wag&quot;       &quot;Datsun 710&quot;         
+##  [4] &quot;Hornet 4 Drive&quot;      &quot;Hornet Sportabout&quot;   &quot;Valiant&quot;            
+##  [7] &quot;Duster 360&quot;          &quot;Merc 240D&quot;           &quot;Merc 230&quot;           
+## [10] &quot;Merc 280&quot;            &quot;Merc 280C&quot;           &quot;Merc 450SE&quot;         
+## [13] &quot;Merc 450SL&quot;          &quot;Merc 450SLC&quot;         &quot;Cadillac Fleetwood&quot; 
+## [16] &quot;Lincoln Continental&quot; &quot;Chrysler Imperial&quot;   &quot;Fiat 128&quot;           
+## [19] &quot;Honda Civic&quot;         &quot;Toyota Corolla&quot;      &quot;Toyota Corona&quot;      
+## [22] &quot;Dodge Challenger&quot;    &quot;AMC Javelin&quot;         &quot;Camaro Z28&quot;         
+## [25] &quot;Pontiac Firebird&quot;    &quot;Fiat X1-9&quot;           &quot;Porsche 914-2&quot;      
+## [28] &quot;Lotus Europa&quot;        &quot;Ford Pantera L&quot;      &quot;Ferrari Dino&quot;       
+## [31] &quot;Maserati Bora&quot;       &quot;Volvo 142E&quot;         
+## 
+## $class
+## [1] &quot;AsIs&quot;       &quot;data.frame&quot;</code></pre>
+<pre class="r"><code>attributes(y)</code></pre>
+<pre><code>## $class
+## [1] &quot;AsIs&quot; &quot;Date&quot;</code></pre>
 <hr />
-<p>To understand what is returned by <code>table()</code>, i.e., the contingency table, we need to experiment a bit:</p>
-<pre class="r"><code># Create a generated vector
-vector &lt;- rpois(n = 100, lambda = 5)
-vector</code></pre>
-<pre><code>##   [1]  6  6  7  4  3  6  4  8  6  8  5  6  9  2 10  8  5  5  4  6  5  4  2  4  6
-##  [26]  3  3  5  4  6  4  7  9  6  4  7  3  7  5  7  4  5  2  3  4  5  7  4  7  6
-##  [51]  8  6 10  7  5  7  6  1  6  3  3  7  6  5 14  3  1  5  9  4  4  5  1  6  4
-##  [76]  3  4  3  4  5  5  3  5  4  5  1  6  4  4  2  3  4  2  6  7  9  2  3  6  6</code></pre>
-<pre class="r"><code># The contingency table returns all unique elements (dimnames) in &quot;vector&quot; and their counts (second row)
-table &lt;- table(vector)
-# The attribute dimnames are the unique elements in &quot;vector&quot;
-attr(x = table, which = &quot;dimnames&quot;)</code></pre>
-<pre><code>## $vector
-##  [1] &quot;1&quot;  &quot;2&quot;  &quot;3&quot;  &quot;4&quot;  &quot;5&quot;  &quot;6&quot;  &quot;7&quot;  &quot;8&quot;  &quot;9&quot;  &quot;10&quot; &quot;14&quot;</code></pre>
-<pre class="r"><code>unique(x = vector) %&gt;% sort()</code></pre>
-<pre><code>##  [1]  1  2  3  4  5  6  7  8  9 10 14</code></pre>
-<pre class="r"><code># The attribute dim is the length of the unique vector
-attr(x = table, which = &quot;dim&quot;)</code></pre>
-<pre><code>## [1] 11</code></pre>
-<pre class="r"><code>unique(x = vector) %&gt;% length()</code></pre>
-<pre><code>## [1] 11</code></pre>
-<pre class="r"><code># The second row of the contingency table gives the count of each observed unique element
-# The element &quot;4&quot; occurred x times
-vector[vector == 4]</code></pre>
-<pre><code>##  [1] 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4</code></pre>
-<pre class="r"><code>vector[vector == 4] %&gt;% length()</code></pre>
-<pre><code>## [1] 20</code></pre>
-<pre class="r"><code># The element &quot;9&quot; occurred x times
-vector[vector == 9]</code></pre>
-<pre><code>## [1] 9 9 9 9</code></pre>
-<pre class="r"><code>vector[vector == 9] %&gt;% length()</code></pre>
-<pre><code>## [1] 4</code></pre>
+</div>
+<div id="exercise-2" class="section level2">
+<h2>Exercise 2</h2>
+<p>What would a constructor function for <code>lm</code> objects, <code>new_lm()</code>, look like? Use ?lm and experimentation to figure out the required fields and their types.</p>
+<pre class="r"><code># Constructor for objects of class lm
+new_lm &lt;- function(x = list(), names = list()) {
+  # Check base type and attributes
+  stopifnot(is.list(x))
+  stopifnot(is.list(names))
+
+  structure(
+    .Data = x,
+    class = &quot;lm&quot;,
+    names = names
+  )
+}</code></pre>
+<p>The constructor is for developers and so experienced developers would know what fields are required in the <code>names</code> list. We may create a validator to ensure that the structure of the object created by <code>new_lm()</code> is as desired:</p>
+<pre class="r"><code># Validator for objects of class lm
+validator_lm &lt;- function(x) {
+
+  # Validate each component in lm list
+  if (is.double(x$coefficient)) {
+    stop(
+      &quot;Coefficients must be of type &#39;double&#39;&quot;
+    )
+  }
+  if (is.double(x$residuals)) {
+    stop(
+      &quot;Residuals must be of type &#39;double&#39;&quot;
+    )
+  }
+  if (is.double(x$effects)) {
+    stop(
+      &quot;Effects must be of type &#39;double&#39;&quot;
+    )
+  }
+  if (is.integer(x$rank)) {
+    stop(
+      &quot;Coefficients must be of type &#39;integer&#39;&quot;
+    )
+  }
+  if (is.double(x$fitted.values)) {
+    stop(
+      &quot;Fitted.values must be of type &#39;double&#39;&quot;
+    )
+  }
+  if (is.integer(x$assign)) {
+    stop(
+      &quot;Assign must be of type &#39;integer&#39;&quot;
+    )
+  }
+  if (is.list(x$qr)) {
+    stop(
+      &quot;QR decomposition must be of type &#39;list&#39;&quot;
+    )
+  }
+  if (is.integer(x$df.residual)) {
+    stop(
+      &quot;Df.residual must be of type &#39;integer&#39;&quot;
+    )
+  }
+  if (is.list(x$xlevels)) {
+    stop(
+      &quot;Xlevels must be of type &#39;integer&#39;&quot;
+    )
+  }
+  if (is.language(x$call)) {
+    stop(
+      &quot;Call must be of type &#39;language&#39;&quot;
+    )
+  }
+  if (purrr::is_formula(x$terms)) {
+    stop(
+      &quot;Terms must be of type &#39;formula&#39;&quot;
+    )
+  }
+  if (is.list(x$model)) {
+    stop(
+      &quot;Model must be of type &#39;list&#39;&quot;
+    )
+  }
+
+  x
+}</code></pre>
+<p>We may also create a helper for the user, although the use of this is minimal, since we usually create objects of class <code>lm</code> from the actual data:</p>
+<pre class="r"><code># Helper
+lm &lt;- function(coefficients = double(),
+               residuals = double(),
+               effects = double(),
+               rank = integer(),
+               fitted.values = double(),
+               assign = integer(),
+               qr = list(),
+               df.residual = integer(),
+               xlevels = list(),
+               call = lm(formula = y ~ x, data = data.frame()),
+               terms = y ~ x,
+               model = list()) {
+
+  # Call constructor
+  new_lm(
+    x = list(),
+    names = list(
+      coefficients = coefficients,
+      residuals = residuals,
+      effects = effects,
+      rank = rank,
+      fitted.values = fitted.values,
+      assign = assign,
+      qr = qr,
+      df.residual = df.residual,
+      xlevels = xlevels,
+      call = call,
+      terms = terms,
+      model = model
+    )
+  ) %&gt;%
+    # Call validator
+    validator_lm(x = .)
+}</code></pre>
+<hr />
+<p>Another solution:</p>
+<pre class="r"><code>new_lm &lt;- function(coefficients, residuals, effects, rank, fitted.values, assign,
+                   qr, df.residual, xlevels, call, terms, model) {
+  stopifnot(
+    is.double(coefficients), is.double(residuals),
+    is.double(effects), is.integer(rank), is.double(fitted.values),
+    is.integer(assign), is.list(qr), is.integer(df.residual),
+    is.list(xlevels), is.language(call), is.language(terms),
+    is.list(model)
+  )
+
+  structure(
+    list(
+      coefficients = coefficients,
+      residuals = residuals,
+      effects = effects,
+      rank = rank,
+      fitted.values = fitted.values,
+      assign = assign,
+      qr = qr,
+      df.residual = df.residual,
+      xlevels = xlevels,
+      call = call,
+      terms = terms,
+      model = model
+    ),
+    class = &quot;lm&quot;
+  )
+}</code></pre>
 </div>
 </div>
 

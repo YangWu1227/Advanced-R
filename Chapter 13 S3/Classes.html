@@ -12,7 +12,7 @@
 <meta name="author" content="Yang Wu" />
 
 
-<title>Basics</title>
+<title>Classes</title>
 
 <script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
 // be compatible with the behavior of Pandoc < 2.8).
@@ -1505,370 +1505,478 @@ div.tocify {
 
 
 
-<h1 class="title toc-ignore">Basics</h1>
+<h1 class="title toc-ignore">Classes</h1>
 <h4 class="author">Yang Wu</h4>
-<h4 class="date">10/4/2021</h4>
+<h4 class="date">10/5/2021</h4>
 
 </div>
 
 
-<div id="basics" class="section level1">
-<h1>Basics</h1>
-<p>A class defines a type of object, describing what properties it possesses, how it behaves, and how it relates to other types of objects. Every object must be an instance of some class. An <strong>S3</strong> object is a base type with <em>at least</em> a <strong>class</strong> attribute (other attributes may be used to store other data):</p>
-<pre class="r"><code># Factor is an S3 vector
-f &lt;- factor(x = c(&quot;a&quot;, &quot;b&quot;, &quot;c&quot;))
-# A factor has a base type integer
-typeof(f)</code></pre>
-<pre><code>## [1] &quot;integer&quot;</code></pre>
-<pre class="r"><code># It has a class attribute
-attr(x = f, which = &quot;class&quot;, exact = FALSE)</code></pre>
-<pre><code>## [1] &quot;factor&quot;</code></pre>
-<pre class="r"><code>attr(x = f, which = &quot;levels&quot;, exact = FALSE)</code></pre>
-<pre><code>## [1] &quot;a&quot; &quot;b&quot; &quot;c&quot;</code></pre>
-<pre class="r"><code># Or, equivalently
-attributes(x = f)</code></pre>
-<pre><code>## $levels
-## [1] &quot;a&quot; &quot;b&quot; &quot;c&quot;
-## 
-## $class
-## [1] &quot;factor&quot;</code></pre>
-<p>We can strip the class attribute using <code>unclass()</code> which causes the object to lose its special behavior whenever its passed to a generic function:</p>
-<pre class="r"><code>unclass(x = f)</code></pre>
-<pre><code>## [1] 1 2 3
-## attr(,&quot;levels&quot;)
-## [1] &quot;a&quot; &quot;b&quot; &quot;c&quot;</code></pre>
-<p>The <strong>class</strong> of an object is determined by its class attribute, a character vector of class names. The following example shows how to create an object of class <code>foo</code>:</p>
-<pre class="r"><code># First way
-x &lt;- 1
-attr(x, &quot;class&quot;) &lt;- &quot;foo&quot;
-x</code></pre>
-<pre><code>## [1] 1
-## attr(,&quot;class&quot;)
-## [1] &quot;foo&quot;</code></pre>
-<pre class="r"><code># Or, alternatively
-x &lt;- structure(.Data = 1, class = &quot;foo&quot;)
-x</code></pre>
-<pre><code>## [1] 1
-## attr(,&quot;class&quot;)
-## [1] &quot;foo&quot;</code></pre>
-<p>Objects are not limited to a single class, and can have many classes:</p>
-<pre class="r"><code># One way to modify
-class(x) &lt;- letters[1:4]
+<div id="classes" class="section level2">
+<h2>Classes</h2>
+<p>To make an object an instance of a class, we need to set the class attribute:</p>
+<pre class="r"><code># Create and assign class in one step
+x &lt;- structure(.Data = list(), class = &quot;my_class&quot;)
+# Object type
+otype(x)</code></pre>
+<pre><code>## [1] &quot;S3&quot;</code></pre>
+<pre class="r"><code># Class
+attributes(x)</code></pre>
+<pre><code>## $class
+## [1] &quot;my_class&quot;</code></pre>
+<p>Or, equivalently:</p>
+<pre class="r"><code># Create then set class
+x &lt;- list()
+class(x) &lt;- &quot;my_class&quot;
+# Object type
+otype(x)</code></pre>
+<pre><code>## [1] &quot;S3&quot;</code></pre>
+<pre class="r"><code># Class
+attributes(x)</code></pre>
+<pre><code>## $class
+## [1] &quot;my_class&quot;</code></pre>
+<p>To determine the class of an S3 object and see if an object is an instance of a class:</p>
+<pre class="r"><code># Check class
 class(x)</code></pre>
-<pre><code>## [1] &quot;a&quot; &quot;b&quot; &quot;c&quot; &quot;d&quot;</code></pre>
-<pre class="r"><code># Another way to modify class attribute
-attr(x, which = &quot;class&quot;) &lt;- c(&quot;Ken&quot;, &quot;Wu&quot;)
-x</code></pre>
-<pre><code>## [1] 1
-## attr(,&quot;class&quot;)
-## [1] &quot;Ken&quot; &quot;Wu&quot;</code></pre>
-<p>An S3 object behaves differently from its underlying base type whenever it is passed to a generic function. Use <code>sloop::ftype()</code> to check for generic functions:</p>
-<pre class="r"><code>ftype(f = print)</code></pre>
-<pre><code>## [1] &quot;S3&quot;      &quot;generic&quot;</code></pre>
-<pre class="r"><code>ftype(f = str)</code></pre>
-<pre><code>## [1] &quot;S3&quot;      &quot;generic&quot;</code></pre>
-<pre class="r"><code>ftype(f = sum)</code></pre>
-<pre><code>## [1] &quot;primitive&quot; &quot;generic&quot;</code></pre>
-<pre class="r"><code>ftype(f = unclass)</code></pre>
-<pre><code>## [1] &quot;primitive&quot;</code></pre>
-<p>A generic function defines an interface, which uses different implementation depending on the class of an argument. The generic has the job of defining the interface (the arguments) before finding the right implementation for the operation. The implementation for a specific class is called a <strong>method</strong>, and the generic finds that method by performing <strong>method dispatch</strong>. This process can be captured using <code>sloop::s3_dispatch()</code>:</p>
-<pre class="r"><code>s3_dispatch(call = print(f))</code></pre>
-<pre><code>## =&gt; print.factor
-##  * print.default</code></pre>
-<p>Note that S3 methods are functions with a special naming scheme <code>generic.class()</code>. As can be seen, the method for class <code>factor</code> is <code>print.factor</code>. Generally, this naming scheme, i.e., the presence of “.”, can be used to identify an S3 method. To be sure, use <code>sloop::ftype()</code>:</p>
-<pre class="r"><code># Generic
-ftype(t.test)</code></pre>
-<pre><code>## [1] &quot;S3&quot;      &quot;generic&quot;</code></pre>
-<pre class="r"><code># S3 methods
-ftype(t.data.frame)</code></pre>
-<pre><code>## [1] &quot;S3&quot;     &quot;method&quot;</code></pre>
-<pre class="r"><code>ftype(print.factor)</code></pre>
-<pre><code>## [1] &quot;S3&quot;     &quot;method&quot;</code></pre>
-<pre class="r"><code>ftype(print.Date)</code></pre>
-<pre><code>## [1] &quot;S3&quot;     &quot;method&quot;</code></pre>
-<p>The function <code>s3_dispatch()</code> prints a list of all possible function names that will be considered for method dispatch. There are four possible states:</p>
+<pre><code>## [1] &quot;my_class&quot;</code></pre>
+<pre class="r"><code># Check if object is an instance of a class
+inherits(x, what = &quot;my_class&quot;, which = FALSE)</code></pre>
+<pre><code>## [1] TRUE</code></pre>
+<pre class="r"><code># The object is not of class &quot;lm&quot;
+inherits(x, what = &quot;lm&quot;, which = FALSE)</code></pre>
+<pre><code>## [1] FALSE</code></pre>
+<p>Three functions are important when creating a custom class:</p>
 <ul>
-<li><p>=&gt; method exists and is found by UseMethod().</p></li>
-<li><p>-&gt; method exists and is used by NextMethod().</p></li>
-<li><p><code>*</code> method exists but is not used.</p></li>
-<li><p>Nothing (and grayed out in console): method does not exist.</p></li>
+<li><p>A constructor called <code>new_myclass()</code></p></li>
+<li><p>A validator called <code>validate_myclass()</code></p></li>
+<li><p>A helper called <code>myclass()</code></p></li>
 </ul>
-<p>Unlike most functions, you can’t see the source code for most S3 methods (except for methods that are found in the base package such as <code>print</code> or <code>t</code>) just by typing their names. That’s because S3 methods are not usually exported: they live only inside the package, and are not available from the global environment. Instead, use <code>sloop::s3_get_method()</code>, which will work regardless of where the method lives:</p>
-<pre class="r"><code># S3 methods that can be accessed using sloop
-s3_get_method(name = weighted.mean.Date)</code></pre>
-<pre><code>## function (x, w, ...) 
-## .Date(weighted.mean(unclass(x), w, ...))
-## &lt;bytecode: 0x7fdffba3efa0&gt;
-## &lt;environment: namespace:stats&gt;</code></pre>
-<p>We can find all S3 methods from the base package as follows:</p>
-<pre class="r"><code># Get the names of all the base package functions
-objs &lt;- mget(ls(name = &quot;package:base&quot;, all.names = TRUE), inherits = TRUE) %&gt;% names()
-# Get all names that returns TRUE using is_s3_method()
-# Use safely in case is_s3_method() fails for one of the function names in &quot;objs&quot;
-# Transpose to get all the results and NULL separately
-s3_methods &lt;- purrr::map(.x = objs, .f = purrr::safely(.f = is_s3_method)) %&gt;% purrr::transpose()
-# Find all results where is_s3_method() failed
-s3_methods_failed &lt;- objs[!purrr::map_lgl(.x = s3_methods[[&quot;error&quot;]], .f = is.null)]
-# Find all results where is_s3_method() returns TRUE
-# These are some of the S3 methods in the base package
-s3_methods_worked &lt;- objs[purrr::map_lgl(.x = s3_methods[[&quot;result&quot;]], .f = isTRUE)]
-# Get these base S3 methods in a list
-s3_methods_list &lt;- mget(ls(name = &quot;package:base&quot;, all.names = TRUE), inherits = TRUE)[s3_methods_worked]
-# Examine the first and last S3 methods
-s3_methods_list[c(1, length(s3_methods_list))]</code></pre>
-<pre><code>## $`-.Date`
-## function (e1, e2) 
-## {
-##     coerceTimeUnit &lt;- function(x) as.vector(round(switch(attr(x, 
-##         &quot;units&quot;), secs = x/86400, mins = x/1440, hours = x/24, 
-##         days = x, weeks = 7 * x)))
-##     if (!inherits(e1, &quot;Date&quot;)) 
-##         stop(&quot;can only subtract from \&quot;Date\&quot; objects&quot;)
-##     if (nargs() == 1L) 
-##         stop(&quot;unary - is not defined for \&quot;Date\&quot; objects&quot;)
-##     if (inherits(e2, &quot;Date&quot;)) 
-##         return(difftime(e1, e2, units = &quot;days&quot;))
-##     if (inherits(e2, &quot;difftime&quot;)) 
-##         e2 &lt;- coerceTimeUnit(e2)
-##     if (!is.null(attr(e2, &quot;class&quot;))) 
-##         stop(&quot;can only subtract numbers from \&quot;Date\&quot; objects&quot;)
-##     .Date(unclass(as.Date(e1)) - e2)
-## }
-## &lt;bytecode: 0x7fdff8921980&gt;
-## &lt;environment: namespace:base&gt;
+<hr />
+</div>
+<div id="constuctors" class="section level1">
+<h1>Constuctors</h1>
+<p><em>The constructor creates new objects with a the correct structure for a given class</em>. This is because S3 does not have a formal definition of a class and so there is no built-in way to ensure that all objects of a given class have the same structure. The constructor should follow three principles:</p>
+<ul>
+<li><p>Be called <code>new_myclass()</code></p></li>
+<li><p>Have one argument for the base object, and one for each attribute</p></li>
+<li><p>Check the type of the base object and the types of each attribute</p></li>
+</ul>
+<p>For example, we can create a constructor for base classes— the S3 class “Date.” The “Date” class is built on double vectors with a single attribute— its class “Date.”</p>
+<pre class="r"><code># One argument for the base object
+new_Date &lt;- function(x = double()) {
+  # Check the type of the base object
+  stopifnot(is.double(x))
+  structure(x, class = &quot;Date&quot;)
+}</code></pre>
+<p>The value of the base object— the double— represents the number of days since <code>1970-01-01</code>, the Unix Epoch:</p>
+<pre class="r"><code>new_Date(x = c(-1, 0, 7))</code></pre>
+<pre><code>## [1] &quot;1969-12-31&quot; &quot;1970-01-01&quot; &quot;1970-01-08&quot;</code></pre>
+<hr />
+<p>Another example is that for <code>difftime</code>, which is used to represent time differences. This object, also built on doubles, is of the class <code>difftime</code> and it has a <code>units</code> attribute.</p>
+<pre class="r"><code># Two arguments for base object and attributes, respectively
+new_difftime &lt;- function(x = double(), units = &quot;secs&quot;) {
+  # Check base type and type of attribute
+  stopifnot(is.double(x))
+  units &lt;- match.arg(
+    arg = units,
+    choices = c(&quot;secs&quot;, &quot;mins&quot;, &quot;hours&quot;, &quot;days&quot;, &quot;weeks&quot;),
+    # Should arg be allowed to have more than one element?
+    several.ok = FALSE
+  )
+
+  structure(.Data = x, class = &quot;difftime&quot;, units = units)
+}</code></pre>
+<p>Instantiate objects of class <code>difftime</code>:</p>
+<pre class="r"><code>new_difftime(x = c(1, 20, 300), units = &quot;secs&quot;)</code></pre>
+<pre><code>## Time differences in secs
+## [1]   1  20 300</code></pre>
+<pre class="r"><code>new_difftime(x = c(300), units = &quot;weeks&quot;)</code></pre>
+<pre><code>## Time difference of 300 weeks</code></pre>
+<p>A constructor will be used by experience users and so we can trade a bit of safety for performance. In other words, leave the more expensive checks for the validator.</p>
+<hr />
+</div>
+<div id="validators" class="section level1">
+<h1>Validators</h1>
+<p><em>The validator perform more computationally expensive checks, which may be required for more complicated classes</em>. For instance, the <code>factor</code> class require more complicated checks as the constructor, which only checks that the types are correct, may create malformed structures.</p>
+<pre class="r"><code># Constructor
+new_factor &lt;- function(x = integer(), levels = character()) {
+  stopifnot(is.integer(x))
+  stopifnot(is.character(levels))
+
+  structure(.Data = x, class = &quot;factor&quot;, levels = levels)
+}</code></pre>
+<p>This example below will lead to malformed factors:</p>
+<pre class="r"><code># Error in as.character.factor(x) : malformed factor
+new_factor(x = (1:8), &quot;a&quot;)</code></pre>
+<p>Create a validator:</p>
+<pre class="r"><code>validate_factor &lt;- function(x) {
+  # Get underlying base object
+  # This would be an integer vector, each element representing a unique factor level
+  values &lt;- unclass(x)
+  # Get levels attributes, which will be a character
+  levels &lt;- attr(x = x, which = &quot;levels&quot;, exact = FALSE)
+
+  # Check base object validity
+  # The predicate function is.na(values) must return FALSE so that !is.na(values) returns TRUE
+  # Both !is.na(values) AND values &gt; 0 must be TRUE to avoid signalling the error condition object
+  # If either !is.na(values) OR values &gt; 0 is FALSE, all() will be FALSE and !all() will be TRUE
+  # Use &amp; rather than vectorized &amp;&amp; since all elements of values must not be NA
+  if (!all(!is.na(values) &amp; values &gt; 0)) {
+    stop(
+      &quot;All &#39;x&#39; values must be non-missing and greater than zero&quot;,
+      call. = FALSE
+    )
+  }
+
+  # Check attribute validity
+  # The maximum of the values vector is the number of unique factor levels in the input x
+  if (length(levels) &lt; max(values)) {
+    stop(
+      &quot;There must be at least as many &#39;levels&#39; as possible values in &#39;x&#39;&quot;,
+      call. = FALSE
+    )
+  }
+
+  # Return visibly the input
+  return(x)
+}</code></pre>
+<p>This validator can check for the validity of structure of the object created by the constructor:</p>
+<pre class="r"><code># The constructor creates a valid object of class factor
+validate_factor(x = new_factor(x = 1:5, levels = letters[1:5]))</code></pre>
+<pre><code>## [1] a b c d e
+## Levels: a b c d e</code></pre>
+<p>Or malformed factors:</p>
+<pre class="r"><code># Error: There must be at least as many &#39;levels&#39; as possible values in &#39;x&#39;
+validate_factor(x = new_factor(x = 1:5, levels = c(&quot;male&quot;, &quot;female&quot;)))
+# Error: All &#39;x&#39; values must be non-missing and greater than zero
+validate_factor(x = new_factor(x = c(1:5, NA_integer_), levels = letters[1:6]))
+# Error: All &#39;x&#39; values must be non-missing and greater than zero
+validate_factor(x = new_factor(x = 0:5, levels = letters[1:6]))</code></pre>
+<hr />
+</div>
+<div id="helpers" class="section level1">
+<h1>Helpers</h1>
+<p><em>A helper method provides a convenient way for others to create objects of a custom class</em>. A helper method should always have the following properties:</p>
+<ul>
+<li><p>Have the same name as the class, e.g., <code>myclass()</code></p></li>
+<li><p>Finish by calling the constructor, and the validator, if it exists</p></li>
+<li><p>Create carefully crafted user interface with carefully chosen default values and useful conversions</p></li>
+</ul>
+<p>Lastly, there are three common patterns:</p>
+<ul>
+<li>Sometimes the helper needs to coerce its inputs to the desired type. For instance, the constructor for objects of <code>difftime</code> class, <code>new_difftime()</code>, is very strict; it violates the usual convention that we can use an integer vector wherever we can use a double vector:</li>
+</ul>
+<pre class="r"><code># Error in new_difftime(x = 1:19, units = &quot;hours&quot;) : is.double(x) is not TRUE
+new_difftime(x = 1:19, units = &quot;hours&quot;)</code></pre>
+<p>The constructor must be strict, but we may create a helper that coerces the input to a double:</p>
+<pre class="r"><code># Helper
+difftime &lt;- function(x = double(), units = &quot;secs&quot;) {
+  x &lt;- as.double(x)
+  # Finish by calling the constructor
+  new_difftime(x, units = units)
+}
+# Now the integer input can be coerced
+difftime(x = 1:19, units = &quot;days&quot;)</code></pre>
+<pre><code>## Time differences in days
+##  [1]  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19</code></pre>
+<hr />
+<ul>
+<li>It may be convenient sometimes to specify a factor with a character vector. For objects of class <code>factor</code>, it may be helpful to create a helper method called <code>factor()</code> that takes a character vector and assumes that the levels should be the unique values. This is a simple implementation of the base function <code>factor</code>:</li>
+</ul>
+<pre class="r"><code>factor &lt;- function(x = character(), levels = unique(x)) {
+  # Return the positions of (first) matches of x in table
+  index &lt;- match(x = x, table = levels)
+  # Finish by calling constructor and validator
+  validate_factor(x = new_factor(x = index, levels = levels))
+}</code></pre>
+<p>We can use this helper to create objects of class <code>factor</code> by supplying character vectors:</p>
+<pre class="r"><code>factor(x = c(&quot;male&quot;, &quot;female&quot;, &quot;other&quot;, &quot;female&quot;, &quot;male&quot;, &quot;male&quot;))</code></pre>
+<pre><code>## [1] male   female other  female male   male  
+## Levels: male female other</code></pre>
+<hr />
+<ul>
+<li>Some complex objects are most naturally specified by multiple simple components. For instance, objects of classes <code>POSIXct</code> (built-on double vectors) and <code>POSIXlt</code>, i.e., date-time classes, may be constructed by supplying the individual components (year, month, day, etc.). We can create a <code>POSIXct()</code> helper method that resembles the <code>ISODatetime()</code> function or the <code>lubridate::make_datetime()</code> function:</li>
+</ul>
+<pre class="r"><code>POSIXct &lt;- function(year = integer(),
+                    month = integer(),
+                    day = integer(),
+                    hour = 0L,
+                    minute = 0L,
+                    second = 0,
+                    tzones = &quot;&quot;) {
+  lubridate::make_datetime(
+    year = year,
+    month = month,
+    day = day,
+    hour = hour,
+    min = minute,
+    sec = second,
+    tz = tzones
+  )
+}</code></pre>
+<p>We can use this helper method to create objects of the date-time classes:</p>
+<pre class="r"><code># Create object
+POSIXct(2020, 1, 1, tzone = &quot;America/New_York&quot;)</code></pre>
+<pre><code>## [1] &quot;2020-01-01 EST&quot;</code></pre>
+<pre class="r"><code># Base type
+POSIXct(2020, 1, 1, tzone = &quot;America/New_York&quot;) %&gt;% typeof()</code></pre>
+<pre><code>## [1] &quot;double&quot;</code></pre>
+<pre class="r"><code># Object type
+POSIXct(2020, 1, 1, tzone = &quot;America/New_York&quot;) %&gt;% otype()</code></pre>
+<pre><code>## [1] &quot;S3&quot;</code></pre>
+<pre class="r"><code># Class
+POSIXct(2020, 1, 1, tzone = &quot;America/New_York&quot;) %&gt;% attributes()</code></pre>
+<pre><code>## $class
+## [1] &quot;POSIXct&quot; &quot;POSIXt&quot; 
 ## 
-## $xtfrm.POSIXlt
-## function (x) 
-## as.double(x)
-## &lt;bytecode: 0x7fdff9dd1e88&gt;
-## &lt;environment: namespace:base&gt;</code></pre>
+## $tzone
+## [1] &quot;America/New_York&quot;</code></pre>
 <hr />
 </div>
 <div id="exercises" class="section level1">
 <h1>Exercises</h1>
 <div id="exercise-1" class="section level2">
 <h2>Exercise 1</h2>
-<p>Describe the difference between <code>t.test()</code> and <code>t.data.frame()</code>? When is each function called?</p>
-<p>The <code>t.test()</code> function is a generic function from the <code>stats</code> package:</p>
-<pre class="r"><code>ftype(f = t.test)</code></pre>
-<pre><code>## [1] &quot;S3&quot;      &quot;generic&quot;</code></pre>
-<p>The method dispatch process can be tracked as follows:</p>
-<pre class="r"><code>s3_dispatch(call = t.test(x = 1:10, y = c(7:20)))</code></pre>
-<pre><code>##    t.test.integer
-##    t.test.numeric
-## =&gt; t.test.default</code></pre>
-<p>This is the default S3 method used when both <code>x</code> and <code>y</code> are supplied as numeric vectors. The S3 method for class “formula” is used when the interface is an S3 formula object:</p>
-<pre class="r"><code># Create object
-formula_object &lt;- y ~ x
-# Object type
-otype(x = formula_object)</code></pre>
+<p>Write a constructor for <code>data.frame</code> objects. What base type is a data frame built on? What attributes does it use? What are the restrictions placed on the individual elements? What about the names?</p>
+<pre class="r"><code># Base type
+typeof(data.frame())</code></pre>
+<pre><code>## [1] &quot;list&quot;</code></pre>
+<pre class="r"><code># Is OO object?
+is.object(data.frame())</code></pre>
+<pre><code>## [1] TRUE</code></pre>
+<pre class="r"><code># Object type
+otype(data.frame())</code></pre>
 <pre><code>## [1] &quot;S3&quot;</code></pre>
-<pre class="r"><code># Class of this object
-class(x = formula_object)</code></pre>
-<pre><code>## [1] &quot;formula&quot;</code></pre>
-<pre class="r"><code># Method dispatch finds the right S3 methods for this object with class &quot;formula&quot;
-# The method is t.test.formula()
-s3_dispatch(call = t.test(extra ~ group, data = sleep))</code></pre>
-<pre><code>## =&gt; t.test.formula
-##  * t.test.default</code></pre>
-<hr />
-<p>One the other hands, <code>t.data.frame()</code> is an S3 method:</p>
-<pre class="r"><code># Function type
-ftype(t.data.frame)</code></pre>
-<pre><code>## [1] &quot;S3&quot;     &quot;method&quot;</code></pre>
-<pre class="r"><code># Get method
-s3_get_method(name = t.data.frame)</code></pre>
-<pre><code>## function (x) 
-## {
-##     x &lt;- as.matrix(x)
-##     NextMethod(&quot;t&quot;)
-## }
-## &lt;bytecode: 0x7fdff923f760&gt;
-## &lt;environment: namespace:base&gt;</code></pre>
-<p>The source code of <code>t.data.frame()</code> shows that it uses <code>NextMethod</code> which performs method dispatch based on the class(es) of the object supplied as an argument to it.</p>
+<pre class="r"><code># Attributes
+attributes(x = data.frame())</code></pre>
+<pre><code>## $names
+## character(0)
+## 
+## $row.names
+## integer(0)
+## 
+## $class
+## [1] &quot;data.frame&quot;</code></pre>
+<p>Create a constructor:</p>
+<pre class="r"><code>new_data_frame &lt;- function(x = list(), names = character(), row.names = integer()) {
+  # Check base type
+  stopifnot(is.list(x))
+  # Check attribute types
+  stopifnot(is.character(names))
+  stopifnot(is.integer(row.names))
+
+  structure(
+    .Data = x,
+    class = &quot;data.frame&quot;,
+    names = names,
+    row.names = row.names
+  )
+}</code></pre>
+<p>We can use the constructor to create objects of class <code>data.frame</code>:</p>
+<pre class="r"><code>new_data_frame(x = list(9:19, 32:42), names = c(&quot;x&quot;, &quot;y&quot;), row.names = 1:10)</code></pre>
+<pre><code>##     x  y
+## 1   9 32
+## 2  10 33
+## 3  11 34
+## 4  12 35
+## 5  13 36
+## 6  14 37
+## 7  15 38
+## 8  16 39
+## 9  17 40
+## 10 18 41</code></pre>
 <hr />
 </div>
 <div id="exercise-2" class="section level2">
 <h2>Exercise 2</h2>
-<p>Make a list of commonly used base R functions that contain “.” in their name but are not S3 methods.</p>
-<pre class="r"><code># All base R function names
-base_fn_nms &lt;- mget(x = ls(name = &quot;package:base&quot;, all.names = TRUE), inherits = TRUE) %&gt;% names()
-# Detect the presence of &quot;.&quot; in function names
-# This function is vectorized and so we do not need to apply it to every element of base_fn_nms
-# The . matches any character so escape . using \ to match . literally
-# The \ itself should also be escaped
-# There are 704 base function with . in their names
-str_detect(string = base_fn_nms, pattern = &quot;\\.&quot;, negate = FALSE) %&gt;% sum()</code></pre>
-<pre><code>## [1] 705</code></pre>
-<pre class="r"><code># Base functions with . in their names
-base_fn_dot_in_nms &lt;- base_fn_nms[str_detect(string = base_fn_nms, pattern = &quot;\\.&quot;, negate = FALSE)]
-# From this list of names, get all S3 methods
-s3_methods &lt;- purrr::map(
-  .x = base_fn_dot_in_nms,
-  .f = purrr::safely(.f = is_s3_method)
-) %&gt;% purrr::transpose()
-# Get all elements that worked
-# The index vector is created by finding all results where is_s3_method returns TRUE
-s3_methods_names &lt;- base_fn_dot_in_nms[purrr::map_lgl(.x = s3_methods[[&quot;result&quot;]], .f = isTRUE)]
-# Examine the first and last S3 method names
-s3_methods_names[c(1, length(s3_methods_names))]</code></pre>
-<pre><code>## [1] &quot;-.Date&quot;        &quot;xtfrm.POSIXlt&quot;</code></pre>
+<p>Enhance the <code>factor()</code> helper to have better behavior when one or more values is not found in levels. What does <code>base::factor()</code> do in this situation?</p>
+<p>The function <code>base::factor()</code> handles the situation where one or more values is not found in levels by coercing them to NA’s:</p>
+<pre class="r"><code>base::factor(sample(letters[1:5], size = 12, replace = TRUE), levels = letters[1:3])</code></pre>
+<pre><code>##  [1] &lt;NA&gt; a    a    &lt;NA&gt; c    &lt;NA&gt; a    a    c    &lt;NA&gt; c    &lt;NA&gt;
+## Levels: a b c</code></pre>
+<p>To enhance our <code>factor()</code> helper method, we can use the <code>nomatch</code> argument in the <code>match()</code> function to capture the values that do not appear in the levels. Then use the captured values to signal a custom error condition object:</p>
+<pre class="r"><code># Create custom abort function
+abort_unknown_level &lt;- function(x, levels = NULL, index) {
+
+  # Capture values that did not have matches in levels
+  unknown_levels &lt;- x[!index] %&gt;% unique()
+  # Capture values that did have matches in levels
+  matched_levels &lt;- x[index] %&gt;% unique()
+  # Error message for user
+  msg &lt;- glue::glue(
+    &quot;Values {toString(unknown_levels)} are not found in levels; all unique values in &#39;x&#39; must be found in ({toString(levels)}).&quot;
+  )
+
+  # Store meta data in condition call
+  # This allows us to use rlang::catch_cnd() to get these meta data
+  rlang::abort(
+    &quot;error_unknown_level&quot;,
+    message = msg,
+    unknown_levels = unknown_levels,
+    matched_levels = matched_levels
+  )
+}</code></pre>
+<p>Now we can use the custom <code>abort()</code> function to throw the error in the <code>factor()</code> helper method:</p>
+<pre class="r"><code>factor &lt;- function(x = character(), levels = unique(x)) {
+
+  # Return the positions of (first) matches of x in table
+  # If any value in x has no match in table, then return FALSE
+  # The index logical_index has TRUE&#39;s for the matched and FALSE&#39;s for the unmatched
+  logical_index &lt;- match(x = x, table = levels, nomatch = FALSE) %&gt;% as.logical()
+
+  # Custom condition object
+  # If any element in logical_index is FALSE, all() will returns FALSE and !all() will return TRUE
+  if (!all(logical_index)) {
+    abort_unknown_level(x, levels, logical_index)
+  }
+
+  # If no error, finish by calling constructor and validator
+  validate_factor(x = new_factor(x = index, levels = levels))
+}</code></pre>
+<p>Let us see it in action. The example below will throw an error and we will use <code>rlang::catch_cnd()</code> to capture the error condition object:</p>
+<pre class="r"><code># This will return =&gt; Error: error_unknown_level
+factor(
+  x = sample(letters[1:5], size = 12, replace = TRUE),
+  levels = letters[1:3]
+)</code></pre>
+<p>We can examine the error condition object:</p>
+<pre class="r"><code># Capture condition object
+error &lt;- factor(
+  x = sample(letters[1:5], size = 12, replace = TRUE),
+  levels = letters[1:3]
+) %&gt;%
+  rlang::catch_cnd()
+# Examine message
+error$message</code></pre>
+<pre><code>## Values e are not found in levels; all unique values in &#39;x&#39; must be found in (a, b, c).</code></pre>
+<pre class="r"><code># Examine metadata
+error$unknown_levels</code></pre>
+<pre><code>## [1] &quot;e&quot;</code></pre>
+<pre class="r"><code>error$matched_levels</code></pre>
+<pre><code>## [1] &quot;c&quot; &quot;b&quot; &quot;a&quot;</code></pre>
+<p>This structured condition object allows for more comprehensive user interface and stores more meta data for the developer.</p>
 <hr />
 </div>
 <div id="exercise-3" class="section level2">
 <h2>Exercise 3</h2>
-<p>What does the <code>as.data.frame.data.frame()</code> method do? Why is it confusing? How could you avoid this confusion in your own code?</p>
-<p>The <code>as.data.frame.data.frame()</code> method is an S3 method where the generic function is <code>as.data.frame</code>:</p>
-<pre class="r"><code>ftype(f = as.data.frame)</code></pre>
-<pre><code>## [1] &quot;S3&quot;      &quot;generic&quot;</code></pre>
-<p>And the class of the object that is <code>data.frame</code>:</p>
-<pre class="r"><code>class(x = data.frame())</code></pre>
-<pre><code>## [1] &quot;data.frame&quot;</code></pre>
-<p>The method dispatch process is as follows:</p>
-<pre class="r"><code># Data frame object
-df &lt;- data.frame()
-# Class
-class(df)</code></pre>
-<pre><code>## [1] &quot;data.frame&quot;</code></pre>
-<pre class="r"><code>attr(x = df, which = &quot;class&quot;, exact = TRUE)</code></pre>
-<pre><code>## [1] &quot;data.frame&quot;</code></pre>
-<pre class="r"><code># Method dispatch
-s3_dispatch(call = as.data.frame(df))</code></pre>
-<pre><code>## =&gt; as.data.frame.data.frame
-##  * as.data.frame.default</code></pre>
-<p>Here’s the object <code>df</code> has class <code>data.frame</code> and so the S3 naming scheme leads to the confusing name <code>as.data.frame.data.frame()</code> for this method. To avoid this, we can use different naming conventions to separate the generic and the class, e.g. <code>as.data.frame_data.frame()</code>.</p>
+<p>Carefully read the source code of <code>factor()</code>. What does it do that our constructor does not?</p>
+<p>This is source code our constructor:</p>
+<pre class="r"><code>new_factor</code></pre>
+<pre><code>## function(x = integer(), levels = character()) {
+##   stopifnot(is.integer(x))
+##   stopifnot(is.character(levels))
+## 
+##   structure(.Data = x, class = &quot;factor&quot;, levels = levels)
+## }
+## &lt;bytecode: 0x7fe8492865f8&gt;</code></pre>
+<p>This is source code of the <code>base::factor()</code> function:</p>
+<pre class="r"><code>base::factor</code></pre>
+<pre><code>## function (x = character(), levels, labels = levels, exclude = NA, 
+##     ordered = is.ordered(x), nmax = NA) 
+## {
+##     if (is.null(x)) 
+##         x &lt;- character()
+##     nx &lt;- names(x)
+##     if (missing(levels)) {
+##         y &lt;- unique(x, nmax = nmax)
+##         ind &lt;- order(y)
+##         levels &lt;- unique(as.character(y)[ind])
+##     }
+##     force(ordered)
+##     if (!is.character(x)) 
+##         x &lt;- as.character(x)
+##     levels &lt;- levels[is.na(match(levels, exclude))]
+##     f &lt;- match(x, levels)
+##     if (!is.null(nx)) 
+##         names(f) &lt;- nx
+##     if (missing(labels)) {
+##         levels(f) &lt;- as.character(levels)
+##     }
+##     else {
+##         nlab &lt;- length(labels)
+##         if (nlab == length(levels)) {
+##             nlevs &lt;- unique(xlevs &lt;- as.character(labels))
+##             at &lt;- attributes(f)
+##             at$levels &lt;- nlevs
+##             f &lt;- match(xlevs, nlevs)[f]
+##             attributes(f) &lt;- at
+##         }
+##         else if (nlab == 1L) 
+##             levels(f) &lt;- paste0(labels, seq_along(levels))
+##         else stop(gettextf(&quot;invalid &#39;labels&#39;; length %d should be 1 or %d&quot;, 
+##             nlab, length(levels)), domain = NA)
+##     }
+##     class(f) &lt;- c(if (ordered) &quot;ordered&quot;, &quot;factor&quot;)
+##     f
+## }
+## &lt;bytecode: 0x7fe84106b888&gt;
+## &lt;environment: namespace:base&gt;</code></pre>
 <hr />
 </div>
 <div id="exercise-4" class="section level2">
 <h2>Exercise 4</h2>
-<p>Describe the difference in behavior in these two calls.</p>
-<pre class="r"><code># Create object
-# This broadcasts the length-5 integer vector onto the length-1 date vector
-# The returned object is a vector of length 5
-# Each element is a date equaling &quot;2017-01-31&quot; plus sample(10, 5)[[i]] number of days
-some_days &lt;- as.Date(&quot;2017-01-31&quot;) + sample(10, 5)
-# Object type
-otype(x = some_days)</code></pre>
-<pre><code>## [1] &quot;S3&quot;</code></pre>
-<pre class="r"><code># Base type
-typeof(x = some_days)</code></pre>
-<pre><code>## [1] &quot;double&quot;</code></pre>
-<pre class="r"><code># Class
-attributes(x = some_days)</code></pre>
-<pre><code>## $class
-## [1] &quot;Date&quot;</code></pre>
-<pre class="r"><code># Function type
-mean %&gt;% ftype()</code></pre>
-<pre><code>## [1] &quot;S3&quot;      &quot;generic&quot;</code></pre>
-<pre class="r"><code># Method dispatch
-s3_dispatch(call = mean(some_days))</code></pre>
-<pre><code>## =&gt; mean.Date
-##  * mean.default</code></pre>
-<pre class="r"><code>s3_dispatch(call = mean(unclass(some_days)))</code></pre>
-<pre><code>##    mean.double
-##    mean.numeric
-## =&gt; mean.default</code></pre>
-<pre class="r"><code># Results
-mean(some_days)</code></pre>
-<pre><code>## [1] &quot;2017-02-04&quot;</code></pre>
-<pre class="r"><code>mean(unclass(some_days))</code></pre>
-<pre><code>## [1] 17201.6</code></pre>
-<p>As can be seen, when we unclass the object with class <code>Date</code>, it behaves differently when passed to the S3 generic function <code>mean</code>. Unclassing <code>some_days</code> returns the atomic double vector, which uses the <code>mean.default()</code> method. When the object with class <code>Date</code> is passed to the <code>mean</code> function, the method <code>mean.Date()</code> is used.</p>
+<p>Factors have an optional “contrasts” attribute. Read the help for C(), and briefly describe the purpose of the attribute. What type should it have? Rewrite the new_factor() constructor to include this attribute.</p>
+<pre class="r"><code>new_factor &lt;- function(x = integer(),
+                       levels = character(),
+                       contrasts = NULL) {
+  stopifnot(is.integer(x))
+  stopifnot(is.character(levels))
+
+  if (!is.null(constrasts)) {
+    stopifnot(is.matrix(contrasts) &amp;&amp; is.numeric(contrasts))
+  }
+
+  structure(
+    x,
+    levels = levels,
+    class = &quot;factor&quot;,
+    contrasts = contrasts
+  )
+}</code></pre>
 <hr />
 </div>
 <div id="exercise-5" class="section level2">
 <h2>Exercise 5</h2>
-<p>What class of object does the following code return? What base type is it built on? What attributes does it use?</p>
+<p>Read the documentation for <code>utils::as.roman()</code>. How would you write a constructor for this class? Does it need a validator? What might a helper do?</p>
+<p>The function <code>utils::as.roman()</code> creates objects of class <code>roman</code>, which are internally built on integer vectors. This class has suitable methods for printing, formatting, sub-setting, coercion, etc.</p>
 <pre class="r"><code># Object
-x &lt;- ecdf(rpois(100, 10))
-x</code></pre>
-<pre><code>## Empirical CDF 
-## Call: ecdf(rpois(100, 10))
-##  x[1:14] =      4,      5,      6,  ...,     16,     18</code></pre>
+utils::as.roman(x = 1:5)</code></pre>
+<pre><code>## [1] I   II  III IV  V</code></pre>
 <pre class="r"><code># Base type
-# This is a function object
-typeof(x = x)</code></pre>
-<pre><code>## [1] &quot;closure&quot;</code></pre>
-<pre class="r"><code># Object type
-# This is an S3 object
-otype(x = x)</code></pre>
-<pre><code>## [1] &quot;S3&quot;</code></pre>
-<pre class="r"><code># Class
-attributes(x)</code></pre>
-<pre><code>## $class
-## [1] &quot;ecdf&quot;     &quot;stepfun&quot;  &quot;function&quot;
-## 
-## $call
-## ecdf(rpois(100, 10))</code></pre>
-<p>The base type of object <code>x</code> is “closure”. The object is of the class <code>ecdf</code> (empirical cumulative distribution function) with super-classes “stepfun” and “function”. It also has a <code>call</code> attribute, which stores the function expression.</p>
-<hr />
-</div>
-<div id="exercise-6" class="section level2">
-<h2>Exercise 6</h2>
-<p>What class of object does the following code return? What base type is it built on? What attributes does it use?</p>
-<pre class="r"><code># Object
-x &lt;- table(rpois(n = 100, lambda = 5))
-x</code></pre>
-<pre><code>## 
-##  1  2  3  4  5  6  7  8  9 10 13 
-##  3 11 14 14 18 12  8 11  4  4  1</code></pre>
-<pre class="r"><code># Base type
-typeof(x = x)</code></pre>
+typeof(utils::as.roman(x = 1:5))</code></pre>
 <pre><code>## [1] &quot;integer&quot;</code></pre>
+<pre class="r"><code># Is OO object?
+is.object(utils::as.roman(x = 1:5))</code></pre>
+<pre><code>## [1] TRUE</code></pre>
 <pre class="r"><code># Object type
-# This is an S3 object
-otype(x = x)</code></pre>
+otype(utils::as.roman(x = 1:5))</code></pre>
 <pre><code>## [1] &quot;S3&quot;</code></pre>
-<pre class="r"><code># Class
-attributes(x)</code></pre>
-<pre><code>## $dim
-## [1] 11
-## 
-## $dimnames
-## $dimnames[[1]]
-##  [1] &quot;1&quot;  &quot;2&quot;  &quot;3&quot;  &quot;4&quot;  &quot;5&quot;  &quot;6&quot;  &quot;7&quot;  &quot;8&quot;  &quot;9&quot;  &quot;10&quot; &quot;13&quot;
-## 
-## 
-## $class
-## [1] &quot;table&quot;</code></pre>
-<p>The object has base type <code>integer</code> and class <code>table</code>. The other attributes are:</p>
-<ul>
-<li><p><code>dimnames</code> which stores all occured elements in the vector generated by <code>rpois(n = 100, lambda = 5)</code></p></li>
-<li><p><code>dim</code> which stores the number of unique elements that are observed in the vector generated by <code>rpois(n = 100, lambda = 5)</code></p></li>
-</ul>
-<hr />
-<p>To understand what is returned by <code>table()</code>, i.e., the contingency table, we need to experiment a bit:</p>
-<pre class="r"><code># Create a generated vector
-vector &lt;- rpois(n = 100, lambda = 5)
-vector</code></pre>
-<pre><code>##   [1]  6  6  7  4  3  6  4  8  6  8  5  6  9  2 10  8  5  5  4  6  5  4  2  4  6
-##  [26]  3  3  5  4  6  4  7  9  6  4  7  3  7  5  7  4  5  2  3  4  5  7  4  7  6
-##  [51]  8  6 10  7  5  7  6  1  6  3  3  7  6  5 14  3  1  5  9  4  4  5  1  6  4
-##  [76]  3  4  3  4  5  5  3  5  4  5  1  6  4  4  2  3  4  2  6  7  9  2  3  6  6</code></pre>
-<pre class="r"><code># The contingency table returns all unique elements (dimnames) in &quot;vector&quot; and their counts (second row)
-table &lt;- table(vector)
-# The attribute dimnames are the unique elements in &quot;vector&quot;
-attr(x = table, which = &quot;dimnames&quot;)</code></pre>
-<pre><code>## $vector
-##  [1] &quot;1&quot;  &quot;2&quot;  &quot;3&quot;  &quot;4&quot;  &quot;5&quot;  &quot;6&quot;  &quot;7&quot;  &quot;8&quot;  &quot;9&quot;  &quot;10&quot; &quot;14&quot;</code></pre>
-<pre class="r"><code>unique(x = vector) %&gt;% sort()</code></pre>
-<pre><code>##  [1]  1  2  3  4  5  6  7  8  9 10 14</code></pre>
-<pre class="r"><code># The attribute dim is the length of the unique vector
-attr(x = table, which = &quot;dim&quot;)</code></pre>
-<pre><code>## [1] 11</code></pre>
-<pre class="r"><code>unique(x = vector) %&gt;% length()</code></pre>
-<pre><code>## [1] 11</code></pre>
-<pre class="r"><code># The second row of the contingency table gives the count of each observed unique element
-# The element &quot;4&quot; occurred x times
-vector[vector == 4]</code></pre>
-<pre><code>##  [1] 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4</code></pre>
-<pre class="r"><code>vector[vector == 4] %&gt;% length()</code></pre>
-<pre><code>## [1] 20</code></pre>
-<pre class="r"><code># The element &quot;9&quot; occurred x times
-vector[vector == 9]</code></pre>
-<pre><code>## [1] 9 9 9 9</code></pre>
-<pre class="r"><code>vector[vector == 9] %&gt;% length()</code></pre>
-<pre><code>## [1] 4</code></pre>
+<pre class="r"><code># Attributes
+attributes(x = utils::as.roman(x = 1:5))</code></pre>
+<pre><code>## $class
+## [1] &quot;roman&quot;</code></pre>
+<p>This object has one attribute— its class <code>roman</code>. We can create a constructor for objects of this class as follows:</p>
+<pre class="r"><code>new_roman &lt;- function(x = integer()) {
+  stopifnot(is.integer(x))
+  structure(
+    .Data = x, 
+    class = &quot;roman&quot;
+  )
+}</code></pre>
+<p>We can use this constructor to create objects of class <code>roman</code>:</p>
+<pre class="r"><code>new_roman(x = sample(x = 1:10, size = 5))</code></pre>
+<pre><code>## [1] VI   VIII V    III  II</code></pre>
+<p>Since this is a simple class, we do not need a validator. However, since <code>double</code> and <code>integer</code> are used almost interchangeably by most R users, we may need to create a helper method that coerces double vector inputs to the desire type:</p>
+<pre class="r"><code>roman &lt;- function(x = integer()) {
+  x &lt;- as.integer(x)
+  new_roman(x)
+}</code></pre>
+<p>Now, if we supply doubles to the constructor, it would throw an error:</p>
+<pre class="r"><code># Error in new_roman(x = c(2.3, 423.2, 232.1)) : is.integer(x) is not TRUE
+new_roman(x = c(2.3, 423.2, 232.1))</code></pre>
+<p>The helper method provides more flexibility:</p>
+<pre class="r"><code>roman(x = c(2.3, 423.2, 232.1))</code></pre>
+<pre><code>## [1] II      CDXXIII CCXXXII</code></pre>
 </div>
 </div>
 
