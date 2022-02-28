@@ -1,0 +1,362 @@
+---
+title: "Inheritance"
+author: "Yang Wu"
+date: "10/6/2021"
+output:
+  bookdown::html_document2:
+    toc: true
+    toc_float: true
+    number_sections: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(message = TRUE)
+knitr::opts_chunk$set(warning = TRUE)
+knitr::opts_chunk$set(fig.height = 6, fig.width = 7, fig.align = "center")
+library(sloop)
+library(vctrs)
+```
+
+## Class vector
+
+S3 classes can share behaviors through **inheritance**. There are three main ideas:
+
+* The class vector can have more than one elements. 
+
+* Method dispatch takes place for each element of the class vector: if a method is not found for the class in the first element, then a second search takes place for the second element, and so on. 
+
+* A method can delegate work by calling `NextMethod()`, and `s3_dispatch()` reports delegation with `->`.
+
+The elements to the right of the left-most element are the **subclasses** of the **superclass**. For instance, examine the example below:
+
+```{r}
+sloop::s3_class(vctrs::new_list_of())
+```
+
+The `vctrs_list_of` is a subclass of `vctrs_vctr`, which is itself a subclass of `list`. Alternatively, we say that `list` is a superclass of `vctrs_vctr`, which is itself a superlcass of `vctrs_list_of`.
+
+### Creating a subclass
+
+When creating subclasses, it is recommended to adhere to two principles:
+
+* The base type (`typeof()`) of the subclass should be the same as the superclass.
+
+* The attributes (`attributes()`) of the subclass should be a superset of the attributes of the superclass. A set "subclass" is a superset of another set "superclass" if all elements of the set "superclass" are elements of the set "subclass". The superset relationship is denoted as $\text{subclass attributes}\supset \text{superclass attributes}$.
+
+---
+
+## NextMethod()
+
+### Concrete example
+
+Create a `secret` class that hides its output when printed:
+
+```{r}
+# Constructor
+new_secret <- function(x = double()) {
+  stopifnot(is.double(x))
+  structure(.Data = x, class = "secret")
+}
+# Define print method
+print.secret <- function(x, ...) {
+  print(strrep(x = "x", times = nchar(x)))
+  invisible(x)
+}
+```
+
+In the print method above, we psuedo-encrypt the input double vector using `x` as a placeholder. For each element we repeat the string "x" `nchar()` number of times for the number of characters or bytes. To understand:
+
+```{r}
+# This should return the number of bytes in each element of the double vector
+nchar(x = c(3, 4.23, 9.32, 4))
+```
+
+Now, when we instantiate the `secret` class and print the output, the numbers should be *encrpyted*:
+
+```{r}
+x <- new_secret(x = c(2, 3, 7.7, 7.6532))
+x
+```
+
+However, the default subsetting operators `[` and `[[` do not preserve the class:
+
+```{r}
+x[1:3]
+x[[4]]
+```
+
+The method dispatch shows that the internal subsetting implementation is used:
+
+```{r}
+s3_dispatch(x[[4]])
+```
+
+And this is why the class of the object `x` is not preserved. We can address this using `NextMethod()`, which invokes the next method.
+
+```{r}
+# Subsetting methods
+`[.secret` <- function(x, i) {
+  new_secret(NextMethod())
+}
+`[[.secret` <- function(x, i) {
+  new_secret(NextMethod())
+}
+# Subset
+x[[3]]
+x[1:3]
+```
+
+If we examine the method dispatch we see the following:
+
+```{r}
+s3_dispatch(x[[3]])
+```
+
+The `=>` indicates that `[[.secret` is called, but that `NextMethod()` within `[[.secret` has delegated the work to the underlying internal `[` method, as shown by the `->`. The net effect is that these subsetting operators will now preserve the class attributes of the object `x`. 
+
+---
+
+### More on UseMethod() and NextMethod()
+
+The `NextMethod` function provides a simple inheritance mechanism, using the fact that the class of an S3 object is a vector. This means that it’s possible to have different inheritance hierarchies for different objects:
+
+```{r}
+# Define a generic
+baz <- function(x) UseMethod("baz", x)
+
+# Define methods for objects with classes "A" and "B"
+baz.A <- function(x) "A"
+baz.B <- function(x) "B"
+
+# Instantiate an object that is a subclass of "B"
+ab <- structure(1, class = c("A", "B"))
+# Instantiate an object that is a subclass of "A"
+ba <- structure(1, class = c("B", "A"))
+
+# Passing these objects to the generic resuls in different outcomes
+baz(ab)
+baz(ba)
+```
+
+* In the case of `baz(ab)`, `UseMethod` dispatches based on the class vector of `ab`:
+
+```{r}
+class(ab)
+```
+
+The dispatch process finds implementation for `baz.A <- function(x) "A"` and uses it. Note that $*$ indicates that `baz.B()` is defined but not used since "B" comes after "A" in the class vector:
+
+```{r}
+s3_dispatch(baz(ab))
+```
+
+* In the case of `baz(ba)`, the method dispatches in a different order due to the class vector `c("B", "A")`, resulting in the following:
+
+```{r}
+s3_dispatch(baz(ba))
+```
+
+Since "A" comes after "B", `UseMethod()` used the implementation uses `baz.B <- function(x) "B"`, returning B. 
+
+---
+
+`NextMethod()` works like `UseMethod()` but instead of dispatching on the first element of the class vector, it will dispatch based on the second (or subsequent) element:
+
+```{r}
+# Define method for class "C"
+baz.C <- function(x) c("C", NextMethod())
+# Instantiate classes
+ca <- structure(1, class = c("C", "A"))
+cb <- structure(1, class = c("C", "B"))
+baz(ca)
+baz(cb)
+```
+
+In the `baz.C()` implementation, a vector `c("C", NextMethod())` is returned. As be seen, rather than using the first elements of the class vectors of `ca` and `cb`--- which are `c("C", "A")` and `c("C", "B")` respectively, `NextMethod()` dispatch based on the second element of the class vector. **It delegates the work to the superclass methods `baz.A` and `baz.B`, which returning "A" and "B", respectively. 
+
+The exact details are actually trickier: `NextMethod()` does not actually work with the class attribute of the object; rather, it uses a global variable (.Class) to keep track of which class to call next. The variable .Class is a character vector of classes used to find the next method. `NextMethod()` adds an attribute "previous" to .Class giving the .Class last used for dispatch, and shifts .Class along to that used for dispatch. This means that manually changing the class of the object will have no impact on the inheritance:
+
+```{r}
+# Turn object into class A - doesn't work!
+baz.D <- function(x) {
+  class(x) <- "A"
+  NextMethod()
+}
+da <- structure(1, class = c("D", "A"))
+db <- structure(1, class = c("D", "B"))
+baz(da)
+baz(db)
+```
+
+As can bee seen, chaing the class vector of `da` and `db` from `c("D", "A")` and `c("D", "B")` to "A" in the `baz.D` function has not impact. `NextMethod()` still dispatched on the superclasses, using methods `baz.A` and `baz.B` and returning "A" and "B", respectively.
+
+---
+
+## Allowing subclassing
+
+To allow subclasses, the parent constructor must have `...` and `class` arguments:
+
+```{r}
+# Modified parent constructor
+new_secret <- function(x, ..., class = character()) {
+  stopifnot(is.double(x))
+
+  structure(
+    x,
+    ...,
+    class = c(class, "secret")
+  )
+}
+```
+
+The `...` allows for additional "name = value" attribute pairs and the `class` argument allows for adding additional subclasses to the class vector.
+
+### Supersecret class
+
+We can create a subclass of the `secret` class as follows:
+
+```{r}
+# Constructor for the subclass
+new_supersecret <- function(x) {
+  new_secret(x, class = "supersecret")
+}
+# Define print method
+print.supersecret <- function(x, ...) {
+  print(rep("xxxxx", length(x)))
+  invisible(x)
+}
+```
+
+The new `supersecret` class hides even the number of characters in the input double vector:
+
+```{r}
+x2 <- new_supersecret(c(15, 1, 456))
+x2
+```
+
+For subclassing, it must be the case that the methods defined for the superclass `secret` must also work with the subclass `supersecret`--- this is the purpose of inheritance and code reusability. For the subsetting methods `[.secret` and `[[.secret`, they are currently returning an object of class `secret`, even when given a `supersecret` object.
+
+```{r}
+x2[1:3]
+x2[[2]]
+```
+
+To ensure that `[.secret` and `[[.secret` respect inheritance--- it returns the same class as `x` even if it is a subclass of `secret`--- we use the `vcrs::vec_restore()` generic functions. This generic takes two inputs:
+
+* An object which has lost subclass information.
+
+* A template object to use for restoration.
+
+The methods can be defined as follows:
+
+```{r}
+vec_restore.secret <- function(x, to, ...) new_secret(x)
+vec_restore.supersecret <- function(x, to, ...) new_supersecret(x)
+```
+
+If our class has other attributes, we can pass them from to into the constructor.
+
+```{r, eval=FALSE}
+vec_restore.supersecret <- function(x, to, ...) new_supersecret(x, other_attributes)
+```
+
+Now, we can use `vec_store()` in `[.secret` and `[[.secret` as follows to ensure that they return the same class as `x` even when it is a subclass of `secret`:
+
+```{r}
+# Subsetting methods
+`[.secret` <- function(x, ...) {
+  vec_restore(x = NextMethod(), to = x)
+}
+`[[.secret` <- function(x, ..) {
+  vec_restore(x = NextMethod(), to = x)
+}
+```
+
+The steps restoration are as follows:
+
+* The first argument of `vec_restore` will call `NexMethod()`.
+
+* The `NexMethod()` call will delegate the implementation to the internal `[` function, which will return an object whose subclass information is lost. 
+
+* The `vec_restore.supersecret()` function will then restore the attributes using the template `to`. Now the subclass should inherit the methods of the superclass:
+
+```{r}
+class(x2)
+x2[1:3]
+x2[[2]]
+```
+
+## Exercises
+
+### Exercise 1
+
+How does [.Date support subclasses? How does it fail to support subclasses?
+
+```{r}
+s3_get_method(`[.Date`)
+```
+
+The subsetting implementation of class "Date" uses the `.Date(xx, cl = "Date")` class generator internally.   
+
+```{r}
+s3_dispatch(as.Date(c("2021-12-27", "2021-11-27"))[2])
+```
+
+This has support for subclass in that the argument `cl = oldClass(x)` is used to ensure that the .Date object generated by the generator has the same class vector as the input `x`, which may be a subclass. The function `oldClass()` is basically the same as `class()`, except that it doesn’t return implicit classes, i.e. `attr(x, "class")`. This implementation however does not preserve attributes:
+
+```{r}
+x <- structure(1:4, test = "test", class = c("myDate", "Date"))
+attributes(x[1])
+```
+
+---
+
+## Exercise 2
+
+What do you expect this code to return? What does it actually return? Why?
+
+```{r}
+generic2 <- function(x) UseMethod("generic2")
+generic2.a1 <- function(x) "a1"
+generic2.a2 <- function(x) "a2"
+generic2.b <- function(x) {
+  class(x) <- "a1"
+  NextMethod()
+}
+
+obj <- structure(list(), class = c("b", "a2"))
+
+generic2(obj)
+```
+
+```{r}
+s3_dispatch(generic2(structure(list(), class = c("b", "a2"))))
+```
+
+The process is as follows:
+
+* The call to `generic2()` calls `UseMethod()` on the class vector of `obj`, which is `c("b", "a2")`. 
+
+* Method dispatch searches and finds implementation for `generic2.b`, which calls `NextMethod()` inside.
+
+* Because `NextMethod()` uses a global variable (.Class) to keep track of which class to call next, manually changing the class using `class(x) <- "a1"` has no impact.
+
+* Therefore, `generic2.a2` is used rather than `generic2.a1`.
+
+---
+
+### Exercise 3
+
+R has two classes for representing date time data, POSIXct and POSIXlt, which both inherit from POSIXt. Which generics have different behaviors for the two classes? Which generics share the same behavior?
+
+```{r}
+# Get generics for these three classes
+generics_t  <- s3_methods_class("POSIXt")$generic
+generics_ct <- s3_methods_class("POSIXct")$generic
+generics_lt <- s3_methods_class("POSIXlt")$generic
+```
+
+
+
+

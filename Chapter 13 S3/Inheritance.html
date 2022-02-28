@@ -12,7 +12,7 @@
 <meta name="author" content="Yang Wu" />
 
 
-<title>Generics and Methods</title>
+<title>Inheritance</title>
 
 <script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
 // be compatible with the behavior of Pandoc < 2.8).
@@ -1505,803 +1505,281 @@ div.tocify {
 
 
 
-<h1 class="title toc-ignore">Generics and Methods</h1>
+<h1 class="title toc-ignore">Inheritance</h1>
 <h4 class="author">Yang Wu</h4>
 <h4 class="date">10/6/2021</h4>
 
 </div>
 
 
-<div id="introduction" class="section level2">
-<h2>Introduction</h2>
-<p>The S3 generic function performs <strong>method dispatch</strong>, that is, finding the specific implementation for a given class. Method dispatch is performed by <code>UseMethod()</code>, which is a primitive function. Every generic with the exception of internal (primitive) generics calls <code>UseMethod()</code> when performing method dispatch. The function has two arguments:</p>
+<div id="class-vector" class="section level2">
+<h2>Class vector</h2>
+<p>S3 classes can share behaviors through <strong>inheritance</strong>. There are three main ideas:</p>
 <ul>
-<li><p>“generic” is a character string naming a function (and not a built-in operator) and is required</p></li>
-<li><p>“object” is an object whose class will determine the method to be dispatched and this defaults to the first argument if it is not supplied</p></li>
+<li><p>The class vector can have more than one elements.</p></li>
+<li><p>Method dispatch takes place for each element of the class vector: if a method is not found for the class in the first element, then a second search takes place for the second element, and so on.</p></li>
+<li><p>A method can delegate work by calling <code>NextMethod()</code>, and <code>s3_dispatch()</code> reports delegation with <code>-&gt;</code>.</p></li>
 </ul>
-<p>When a function calling <code>UseMethod(&quot;fun&quot;)</code> is applied to an object with class attribute <code>c(&quot;first&quot;, &quot;second&quot;)</code>, the system searches for a function called <code>fun.first</code> and, if it finds it, applies it to the object. If no such function is found a function called <code>fun.second</code> is tried. If no class name in <code>c(&quot;first&quot;, &quot;second&quot;)</code> produces a suitable function, the function <code>fun.default</code> is used, if it exists, or an error results.</p>
-<pre class="r"><code>print</code></pre>
-<pre><code>## function (x, ...) 
-## UseMethod(&quot;print&quot;)
-## &lt;bytecode: 0x7fd6e48642f8&gt;
-## &lt;environment: namespace:base&gt;</code></pre>
-<p>When <code>print()</code> is called on an object, for instance <code>matrix(1:20, 2)</code>, the class attribute <code>x(&quot;matrix&quot; &quot;array&quot;)</code>, the base type <code>c(&quot;integer&quot;)</code>, and the mode <code>c(&quot;numeric&quot;)</code> for this base object is used for method dispatch. Since neither of those functions <code>print.matrix</code>, <code>print.integer</code>, and <code>print.numeric</code> are found, <code>print.default</code> is used:</p>
-<pre class="r"><code>s3_dispatch(call = print(matrix(1:20, 2)))</code></pre>
-<pre><code>##    print.matrix
-##    print.integer
-##    print.numeric
-## =&gt; print.default</code></pre>
-<p>Generic functions all have the same form: a call to <code>UseMethod</code> that specifies the generic name and the object to dispatch on.</p>
-<pre class="r"><code>my_new_generic &lt;- function(x) {
-  UseMethod(&quot;my_new_generic&quot;)
+<p>The elements to the right of the left-most element are the <strong>subclasses</strong> of the <strong>superclass</strong>. For instance, examine the example below:</p>
+<pre class="r"><code>sloop::s3_class(vctrs::new_list_of())</code></pre>
+<pre><code>## [1] &quot;vctrs_list_of&quot; &quot;vctrs_vctr&quot;    &quot;list&quot;</code></pre>
+<p>The <code>vctrs_list_of</code> is a subclass of <code>vctrs_vctr</code>, which is itself a subclass of <code>list</code>. Alternatively, we say that <code>list</code> is a superclass of <code>vctrs_vctr</code>, which is itself a superlcass of <code>vctrs_list_of</code>.</p>
+<div id="creating-a-subclass" class="section level3">
+<h3>Creating a subclass</h3>
+<p>When creating subclasses, it is recommended to adhere to two principles:</p>
+<ul>
+<li><p>The base type (<code>typeof()</code>) of the subclass should be the same as the superclass.</p></li>
+<li><p>The attributes (<code>attributes()</code>) of the subclass should be a superset of the attributes of the superclass. A set “subclass” is a superset of another set “superclass” if all elements of the set “superclass” are elements of the set “subclass”. The superset relationship is denoted as <span class="math inline">\(\text{subclass attributes}\supset \text{superclass attributes}\)</span>.</p></li>
+</ul>
+<hr />
+</div>
+</div>
+<div id="nextmethod" class="section level2">
+<h2>NextMethod()</h2>
+<div id="concrete-example" class="section level3">
+<h3>Concrete example</h3>
+<p>Create a <code>secret</code> class that hides its output when printed:</p>
+<pre class="r"><code># Constructor
+new_secret &lt;- function(x = double()) {
+  stopifnot(is.double(x))
+  structure(.Data = x, class = &quot;secret&quot;)
+}
+# Define print method
+print.secret &lt;- function(x, ...) {
+  print(strrep(x = &quot;x&quot;, times = nchar(x)))
+  invisible(x)
 }</code></pre>
-<hr />
-</div>
-<div id="method-dispatch" class="section level1">
-<h1>Method dispatch</h1>
-<p>Essentially, <code>UseMethod()</code> creates a vector of method names:</p>
-<pre class="r"><code># Classes of x
-x &lt;- 1L
-s3_class(x)</code></pre>
-<pre><code>## [1] &quot;integer&quot; &quot;numeric&quot;</code></pre>
-<pre class="r"><code># Create vector of method names
-paste0(&quot;generic&quot;, &quot;.&quot;, c(s3_class(x), &quot;default&quot;))</code></pre>
-<pre><code>## [1] &quot;generic.integer&quot; &quot;generic.numeric&quot; &quot;generic.default&quot;</code></pre>
-<p>Another example:</p>
-<pre class="r"><code># Object
-x &lt;- Sys.Date()
-# Class
-s3_class(x)</code></pre>
-<pre><code>## [1] &quot;Date&quot;</code></pre>
-<pre class="r"><code># Method dispatch
-s3_dispatch(call = print(x))</code></pre>
-<pre><code>## =&gt; print.Date
-##  * print.default</code></pre>
-<ul>
-<li><code>=&gt;</code> indicates the method that is called, here <code>print.Date()</code></li>
-<li><code>*</code> indicates a method that is defined, but not called, here <code>print.default()</code></li>
-</ul>
-<p>The “default” class is a special <strong>pseudo-class</strong>. This is not a real class, but is included to make it possible to define a standard fallback that is found whenever a class-specific method is not available. Once <code>UseMethod</code> has found the correct method, it is invoked in a <strong>special way</strong>. Rather than creating a new evaluation environment, it uses the environment of the current function call (the call to the <code>generic</code>), so any assignments or evaluations that were made before the call to <code>UseMethod</code> will be accessible to the method. The arguments that were used in the call to the generic are passed on to the method in the same order they were received.</p>
-<hr />
-</div>
-<div id="finding-methods" class="section level1">
-<h1>Finding methods</h1>
-<p>Find some base package S3 generic functions:</p>
-<pre class="r"><code># Base R functions
-base_fn &lt;- mget(x = ls(name = &quot;package:base&quot;, all.names = TRUE), inherits = TRUE)
-# Define a function to test whether a function is a S3 generic
-test_fn &lt;- function(x) {
-  identical(ftype(x), c(&quot;S3&quot;, &quot;generic&quot;))
+<p>In the print method above, we psuedo-encrypt the input double vector using <code>x</code> as a placeholder. For each element we repeat the string “x” <code>nchar()</code> number of times for the number of characters or bytes. To understand:</p>
+<pre class="r"><code># This should return the number of bytes in each element of the double vector
+nchar(x = c(3, 4.23, 9.32, 4))</code></pre>
+<pre><code>## [1] 1 4 4 1</code></pre>
+<p>Now, when we instantiate the <code>secret</code> class and print the output, the numbers should be <em>encrpyted</em>:</p>
+<pre class="r"><code>x &lt;- new_secret(x = c(2, 3, 7.7, 7.6532))
+x</code></pre>
+<pre><code>## [1] &quot;x&quot;      &quot;x&quot;      &quot;xxx&quot;    &quot;xxxxxx&quot;</code></pre>
+<p>However, the default subsetting operators <code>[</code> and <code>[[</code> do not preserve the class:</p>
+<pre class="r"><code>x[1:3]</code></pre>
+<pre><code>## [1] 2.0 3.0 7.7</code></pre>
+<pre class="r"><code>x[[4]]</code></pre>
+<pre><code>## [1] 7.6532</code></pre>
+<p>The method dispatch shows that the internal subsetting implementation is used:</p>
+<pre class="r"><code>s3_dispatch(x[[4]])</code></pre>
+<pre><code>##    [[.secret
+##    [[.default
+## =&gt; [[ (internal)</code></pre>
+<p>And this is why the class of the object <code>x</code> is not preserved. We can address this using <code>NextMethod()</code>, which invokes the next method.</p>
+<pre class="r"><code># Subsetting methods
+`[.secret` &lt;- function(x, i) {
+  new_secret(NextMethod())
 }
-test_fn_safe &lt;- safely(test_fn)
-# Store results
-results &lt;- purrr::map(.x = base_fn, .f = test_fn_safe) %&gt;% purrr::transpose()
-# Create index
-index &lt;- purrr::map_lgl(.x = results[[&quot;result&quot;]], .f = isTRUE)
-# Subset to select S3 generic functions
-base_fn %&gt;%
-  names() %&gt;%
-  `[`(index)</code></pre>
-<pre><code>##  [1] &quot;all.equal&quot;                &quot;anyDuplicated&quot;           
-##  [3] &quot;aperm&quot;                    &quot;as.array&quot;                
-##  [5] &quot;as.data.frame&quot;            &quot;as.Date&quot;                 
-##  [7] &quot;as.expression&quot;            &quot;as.function&quot;             
-##  [9] &quot;as.list&quot;                  &quot;as.matrix&quot;               
-## [11] &quot;as.null&quot;                  &quot;as.POSIXct&quot;              
-## [13] &quot;as.POSIXlt&quot;               &quot;as.single&quot;               
-## [15] &quot;as.table&quot;                 &quot;by&quot;                      
-## [17] &quot;chol&quot;                     &quot;close&quot;                   
-## [19] &quot;conditionCall&quot;            &quot;conditionMessage&quot;        
-## [21] &quot;cut&quot;                      &quot;determinant&quot;             
-## [23] &quot;diff&quot;                     &quot;droplevels&quot;              
-## [25] &quot;duplicated&quot;               &quot;flush&quot;                   
-## [27] &quot;format&quot;                   &quot;getDLLRegisteredRoutines&quot;
-## [29] &quot;intersect&quot;                &quot;is.na&lt;-&quot;                 
-## [31] &quot;isSymmetric&quot;              &quot;julian&quot;                  
-## [33] &quot;kappa&quot;                    &quot;labels&quot;                  
-## [35] &quot;levels&quot;                   &quot;mean&quot;                    
-## [37] &quot;merge&quot;                    &quot;months&quot;                  
-## [39] &quot;open&quot;                     &quot;plot&quot;                    
-## [41] &quot;pretty&quot;                   &quot;print&quot;                   
-## [43] &quot;qr&quot;                       &quot;quarters&quot;                
-## [45] &quot;rev&quot;                      &quot;row.names&quot;               
-## [47] &quot;row.names&lt;-&quot;              &quot;rowsum&quot;                  
-## [49] &quot;scale&quot;                    &quot;seek&quot;                    
-## [51] &quot;seq&quot;                      &quot;sequence&quot;                
-## [53] &quot;setdiff&quot;                  &quot;setequal&quot;                
-## [55] &quot;solve&quot;                    &quot;sort&quot;                    
-## [57] &quot;split&quot;                    &quot;split&lt;-&quot;                 
-## [59] &quot;subset&quot;                   &quot;summary&quot;                 
-## [61] &quot;t&quot;                        &quot;toString&quot;                
-## [63] &quot;transform&quot;                &quot;truncate&quot;                
-## [65] &quot;union&quot;                    &quot;unique&quot;                  
-## [67] &quot;units&quot;                    &quot;units&lt;-&quot;                 
-## [69] &quot;weekdays&quot;                 &quot;with&quot;                    
-## [71] &quot;within&quot;</code></pre>
-<p>We can use <code>s3_methods_generic(x)</code> and <code>s3_methods_class(x)</code> where x is the name of class or generic.</p>
-<pre class="r"><code># Check all methods defined for a given generic
-s3_methods_generic(&quot;mean&quot;)</code></pre>
-<pre><code>## # A tibble: 7 × 4
-##   generic class      visible source             
-##   &lt;chr&gt;   &lt;chr&gt;      &lt;lgl&gt;   &lt;chr&gt;              
-## 1 mean    Date       TRUE    base               
-## 2 mean    default    TRUE    base               
-## 3 mean    difftime   TRUE    base               
-## 4 mean    POSIXct    TRUE    base               
-## 5 mean    POSIXlt    TRUE    base               
-## 6 mean    quosure    FALSE   registered S3method
-## 7 mean    vctrs_vctr FALSE   registered S3method</code></pre>
-<pre class="r"><code>s3_methods_generic(&quot;solve&quot;)</code></pre>
-<pre><code>## # A tibble: 2 × 4
-##   generic class   visible source
-##   &lt;chr&gt;   &lt;chr&gt;   &lt;lgl&gt;   &lt;chr&gt; 
-## 1 solve   default TRUE    base  
-## 2 solve   qr      TRUE    base</code></pre>
-<pre class="r"><code>s3_methods_generic(&quot;within&quot;)</code></pre>
-<pre><code>## # A tibble: 2 × 4
-##   generic class      visible source
-##   &lt;chr&gt;   &lt;chr&gt;      &lt;lgl&gt;   &lt;chr&gt; 
-## 1 within  data.frame TRUE    base  
-## 2 within  list       TRUE    base</code></pre>
-<pre class="r"><code># Check all generics that have been provided methods for a given class
-s3_methods_class(&quot;Date&quot;)</code></pre>
-<pre><code>## # A tibble: 46 × 4
-##    generic class visible source             
-##    &lt;chr&gt;   &lt;chr&gt; &lt;lgl&gt;   &lt;chr&gt;              
-##  1 -       Date  TRUE    base               
-##  2 !=      Date  FALSE   registered S3method
-##  3 [       Date  TRUE    base               
-##  4 [[      Date  TRUE    base               
-##  5 [&lt;-     Date  TRUE    base               
-##  6 +       Date  TRUE    base               
-##  7 &lt;       Date  FALSE   registered S3method
-##  8 &lt;=      Date  FALSE   registered S3method
-##  9 ==      Date  FALSE   registered S3method
-## 10 &gt;       Date  FALSE   registered S3method
-## # … with 36 more rows</code></pre>
-<pre class="r"><code>s3_methods_class(&quot;roman&quot;)</code></pre>
-<pre><code>## # A tibble: 7 × 4
-##   generic      class visible source             
-##   &lt;chr&gt;        &lt;chr&gt; &lt;lgl&gt;   &lt;chr&gt;              
-## 1 [            roman FALSE   registered S3method
-## 2 as.character roman FALSE   registered S3method
-## 3 format       roman FALSE   registered S3method
-## 4 Ops          roman FALSE   registered S3method
-## 5 print        roman FALSE   registered S3method
-## 6 rep          roman FALSE   registered S3method
-## 7 Summary      roman FALSE   registered S3method</code></pre>
-<pre class="r"><code>s3_methods_class(&quot;factor&quot;)</code></pre>
-<pre><code>## # A tibble: 32 × 4
-##    generic       class  visible source             
-##    &lt;chr&gt;         &lt;chr&gt;  &lt;lgl&gt;   &lt;chr&gt;              
-##  1 [             factor TRUE    base               
-##  2 [[            factor TRUE    base               
-##  3 [[&lt;-          factor TRUE    base               
-##  4 [&lt;-           factor TRUE    base               
-##  5 all.equal     factor TRUE    base               
-##  6 as_factor     factor FALSE   registered S3method
-##  7 as.character  factor TRUE    base               
-##  8 as.data.frame factor TRUE    base               
-##  9 as.Date       factor TRUE    base               
-## 10 as.list       factor TRUE    base               
-## # … with 22 more rows</code></pre>
-<p>Alternatively, we can use <code>methods</code> from the base package to find out which classes a generic function has methods for. Note, in R, that methods are associated with <strong>functions</strong> (not objects), so we pass in the name of the function, rather than the class. This is an important difference between functional OOP and Encapsulated OOP.</p>
-<pre class="r"><code>methods(mean)</code></pre>
-<pre><code>## [1] mean.Date        mean.default     mean.difftime    mean.POSIXct    
-## [5] mean.POSIXlt     mean.quosure*    mean.vctrs_vctr*
-## see &#39;?methods&#39; for accessing help and source code</code></pre>
-<pre class="r"><code>methods(sum)</code></pre>
-<pre><code>## [1] sum.fs_bytes*   sum.rlib_bytes*
-## see &#39;?methods&#39; for accessing help and source code</code></pre>
-<hr />
-</div>
-<div id="exercises" class="section level1">
-<h1>Exercises</h1>
-<div id="exercise-1" class="section level2">
-<h2>Exercise 1</h2>
-<p>What generics does the <code>table</code> class have methods for?</p>
-<pre class="r"><code>s3_methods_class(x = &quot;table&quot;)</code></pre>
-<pre><code>## # A tibble: 11 × 4
-##    generic       class visible source             
-##    &lt;chr&gt;         &lt;chr&gt; &lt;lgl&gt;   &lt;chr&gt;              
-##  1 [             table TRUE    base               
-##  2 aperm         table TRUE    base               
-##  3 as_tibble     table FALSE   registered S3method
-##  4 as.data.frame table TRUE    base               
-##  5 Axis          table FALSE   registered S3method
-##  6 lines         table FALSE   registered S3method
-##  7 plot          table FALSE   registered S3method
-##  8 points        table FALSE   registered S3method
-##  9 print         table TRUE    base               
-## 10 summary       table TRUE    base               
-## 11 tail          table FALSE   registered S3method</code></pre>
-<p>As an example, when an object of class <code>class</code> is passed to the generic function <code>plot()</code>, <code>plot.table()</code> is used:</p>
-<pre class="r"><code>s3_dispatch(plot(table(sample(1:10, 20, replace = TRUE))))</code></pre>
-<pre><code>## =&gt; plot.table
-##  * plot.default</code></pre>
-<hr />
-</div>
-<div id="exericse-2" class="section level2">
-<h2>Exericse 2</h2>
-<p>What generics does the <code>ecdf</code> class have methods for?</p>
-<pre class="r"><code>s3_methods_class(x = &quot;ecdf&quot;)</code></pre>
-<pre><code>## # A tibble: 4 × 4
-##   generic  class visible source             
-##   &lt;chr&gt;    &lt;chr&gt; &lt;lgl&gt;   &lt;chr&gt;              
-## 1 plot     ecdf  TRUE    stats              
-## 2 print    ecdf  FALSE   registered S3method
-## 3 quantile ecdf  FALSE   registered S3method
-## 4 summary  ecdf  FALSE   registered S3method</code></pre>
-<hr />
-</div>
-<div id="exercise-3" class="section level2">
-<h2>Exercise 3</h2>
-<p>Which base generic has the greatest number of defined methods?</p>
-<pre class="r"><code># List all names in base environment
-# Character vector
-ls(all.names = TRUE, env = base::baseenv()) %&gt;%
-  # Search for list of names in the base environment
-  # List object
-  mget(x = ., envir = baseenv(), inherits = FALSE) %&gt;%
-  # Keep elements when purrr::is_function() returns TRUE
-  # List object
-  keep(.x = ., .p = is_function) %&gt;%
-  # Get the names of the functions
-  # Character vector
-  names() %&gt;%
-  # Keep names that return TRUE when passed to is_s3_generic()
-  # Character vector
-  keep(is_s3_generic) %&gt;%
-  # The function s3_methods_generic(x) returns a tibble for each function name
-  # The anonymous function returns a named integer vector each iteration of map
-  # The two components of these vectors are the function names and the number of rows in the tibble
-  # List object
-  map(.x = ., .f = ~ set_names(x = nrow(s3_methods_generic(.x)), nm = .x)) %&gt;%
-  # Flatten the list object from vertical to horizontal
-  flatten_int(.x = .) %&gt;%
-  # Sort
-  sort(decreasing = TRUE) %&gt;%
-  head(n = 5)</code></pre>
-<pre><code>##        print       format            [ as.character      summary 
-##          336          144           64           50           45</code></pre>
-<hr />
-</div>
-<div id="exercise-4" class="section level2">
-<h2>Exercise 4</h2>
-<p>Carefully read the documentation for <code>UseMethod()</code> and explain why the following code returns the results that it does. What two usual rules of function evaluation does <code>UseMethod()</code> violate?</p>
-<pre class="r"><code># Define g
-g &lt;- function(x) {
-  x &lt;- 10
-  y &lt;- 10
-  UseMethod(&quot;g&quot;)
+`[[.secret` &lt;- function(x, i) {
+  new_secret(NextMethod())
 }
-# Define method
-g.default &lt;- function(x) c(x = x, y = y)
-# Bindings in global environment
-x &lt;- 1
-y &lt;- 5
-# Method dispatch
-s3_dispatch(call = g(x))</code></pre>
-<pre><code>##    g.double
-##    g.numeric
-## =&gt; g.default</code></pre>
-<pre class="r"><code># Call g
-g(x)</code></pre>
-<pre><code>##  x  y 
-##  1 10</code></pre>
-<p>The rule that <code>UseMethod()</code> breaks is name-masking. Normally, names defined inside the function should mask names defined outside. In other words, the bindings <code>x &lt;- 10</code> and <code>y &lt;- 10</code> inside <code>g()</code> should mask those defined outside— <code>x &lt;- 1</code> and <code>y &lt;- 1</code>. However, <code>g(x)</code> returns <code>c(1, 10)</code>, which means that the value of <code>x</code> is scoped from the global environment while that of <code>y</code> is scoped from within the generic function <code>g()</code>. Why?</p>
-<ul>
-<li>When <code>UseMethod(&quot;g&quot;)</code> is called within <code>g()</code>, method dispatch is performed and <code>g.default()</code> is called. Since <code>g.default()</code> is defined in the global environment, it binds or encloses the global environment; this is where <code>g.default()</code> scopes for the value of its argument <code>x</code>. Thus, the binding <code>x &lt;- 1</code> is used. The argument supplied to the function <code>g()</code> is passed on as is and cannot be affected by code inside the generic. Since the binding <code>x &lt;- 1</code> already exists in the enclosing environment of <code>g.default()</code>, <code>x &lt;- 10</code> defined within the generic is masked.</li>
-</ul>
+# Subset
+x[[3]]</code></pre>
+<pre><code>## [1] &quot;xxx&quot;</code></pre>
+<pre class="r"><code>x[1:3]</code></pre>
+<pre><code>## [1] &quot;x&quot;   &quot;x&quot;   &quot;xxx&quot;</code></pre>
+<p>If we examine the method dispatch we see the following:</p>
+<pre class="r"><code>s3_dispatch(x[[3]])</code></pre>
+<pre><code>## =&gt; [[.secret
+##    [[.default
+## -&gt; [[ (internal)</code></pre>
+<p>The <code>=&gt;</code> indicates that <code>[[.secret</code> is called, but that <code>NextMethod()</code> within <code>[[.secret</code> has delegated the work to the underlying internal <code>[</code> method, as shown by the <code>-&gt;</code>. The net effect is that these subsetting operators will now preserve the class attributes of the object <code>x</code>.</p>
 <hr />
 </div>
-<div id="exercise-5" class="section level2">
-<h2>Exercise 5</h2>
-<p>What are the arguments to <code>[</code>? Why is this a hard question to answer?</p>
-<pre class="r"><code># Function type
-ftype(`[`)</code></pre>
-<pre><code>## [1] &quot;primitive&quot; &quot;generic&quot;</code></pre>
-<pre class="r"><code># Source code
-pryr::show_c_source(.Primitive(&quot;[&quot;))</code></pre>
-<pre><code>## [ is implemented by do_subset with op = 1</code></pre>
-<pre><code>## Please visit https://github.com/search?q=SEXP%20attribute_hidden%20do_subset+repo:wch/r-source&amp;type=Code</code></pre>
-<pre class="r"><code># Get methods for this generic
-s3_methods_generic(&quot;[&quot;) %&gt;%
-  # Keep only those methods that are exported
-  filter(.data = ., visible == TRUE)</code></pre>
-<pre><code>## # A tibble: 17 × 4
-##    generic class           visible source
-##    &lt;chr&gt;   &lt;chr&gt;           &lt;lgl&gt;   &lt;chr&gt; 
-##  1 [       AsIs            TRUE    base  
-##  2 [       data.frame      TRUE    base  
-##  3 [       Date            TRUE    base  
-##  4 [       difftime        TRUE    base  
-##  5 [       Dlist           TRUE    base  
-##  6 [       DLLInfoList     TRUE    base  
-##  7 [       factor          TRUE    base  
-##  8 [       hexmode         TRUE    base  
-##  9 [       listof          TRUE    base  
-## 10 [       noquote         TRUE    base  
-## 11 [       numeric_version TRUE    base  
-## 12 [       octmode         TRUE    base  
-## 13 [       POSIXct         TRUE    base  
-## 14 [       POSIXlt         TRUE    base  
-## 15 [       simple.list     TRUE    base  
-## 16 [       table           TRUE    base  
-## 17 [       warnings        TRUE    base</code></pre>
+<div id="more-on-usemethod-and-nextmethod" class="section level3">
+<h3>More on UseMethod() and NextMethod()</h3>
+<p>The <code>NextMethod</code> function provides a simple inheritance mechanism, using the fact that the class of an S3 object is a vector. This means that it’s possible to have different inheritance hierarchies for different objects:</p>
+<pre class="r"><code># Define a generic
+baz &lt;- function(x) UseMethod(&quot;baz&quot;, x)
+
+# Define methods for objects with classes &quot;A&quot; and &quot;B&quot;
+baz.A &lt;- function(x) &quot;A&quot;
+baz.B &lt;- function(x) &quot;B&quot;
+
+# Instantiate an object that is a subclass of &quot;B&quot;
+ab &lt;- structure(1, class = c(&quot;A&quot;, &quot;B&quot;))
+# Instantiate an object that is a subclass of &quot;A&quot;
+ba &lt;- structure(1, class = c(&quot;B&quot;, &quot;A&quot;))
+
+# Passing these objects to the generic resuls in different outcomes
+baz(ab)</code></pre>
+<pre><code>## [1] &quot;A&quot;</code></pre>
+<pre class="r"><code>baz(ba)</code></pre>
+<pre><code>## [1] &quot;B&quot;</code></pre>
+<ul>
+<li>In the case of <code>baz(ab)</code>, <code>UseMethod</code> dispatches based on the class vector of <code>ab</code>:</li>
+</ul>
+<pre class="r"><code>class(ab)</code></pre>
+<pre><code>## [1] &quot;A&quot; &quot;B&quot;</code></pre>
+<p>The dispatch process finds implementation for <code>baz.A &lt;- function(x) &quot;A&quot;</code> and uses it. Note that <span class="math inline">\(*\)</span> indicates that <code>baz.B()</code> is defined but not used since “B” comes after “A” in the class vector:</p>
+<pre class="r"><code>s3_dispatch(baz(ab))</code></pre>
+<pre><code>## =&gt; baz.A
+##  * baz.B
+##    baz.default</code></pre>
+<ul>
+<li>In the case of <code>baz(ba)</code>, the method dispatches in a different order due to the class vector <code>c(&quot;B&quot;, &quot;A&quot;)</code>, resulting in the following:</li>
+</ul>
+<pre class="r"><code>s3_dispatch(baz(ba))</code></pre>
+<pre><code>## =&gt; baz.B
+##  * baz.A
+##    baz.default</code></pre>
+<p>Since “A” comes after “B”, <code>UseMethod()</code> used the implementation uses <code>baz.B &lt;- function(x) &quot;B&quot;</code>, returning B.</p>
+<hr />
+<p><code>NextMethod()</code> works like <code>UseMethod()</code> but instead of dispatching on the first element of the class vector, it will dispatch based on the second (or subsequent) element:</p>
+<pre class="r"><code># Define method for class &quot;C&quot;
+baz.C &lt;- function(x) c(&quot;C&quot;, NextMethod())
+# Instantiate classes
+ca &lt;- structure(1, class = c(&quot;C&quot;, &quot;A&quot;))
+cb &lt;- structure(1, class = c(&quot;C&quot;, &quot;B&quot;))
+baz(ca)</code></pre>
+<pre><code>## [1] &quot;C&quot; &quot;A&quot;</code></pre>
+<pre class="r"><code>baz(cb)</code></pre>
+<pre><code>## [1] &quot;C&quot; &quot;B&quot;</code></pre>
+<p>In the <code>baz.C()</code> implementation, a vector <code>c(&quot;C&quot;, NextMethod())</code> is returned. As be seen, rather than using the first elements of the class vectors of <code>ca</code> and <code>cb</code>— which are <code>c(&quot;C&quot;, &quot;A&quot;)</code> and <code>c(&quot;C&quot;, &quot;B&quot;)</code> respectively, <code>NextMethod()</code> dispatch based on the second element of the class vector. **It delegates the work to the superclass methods <code>baz.A</code> and <code>baz.B</code>, which returning “A” and “B”, respectively.</p>
+<p>The exact details are actually trickier: <code>NextMethod()</code> does not actually work with the class attribute of the object; rather, it uses a global variable (.Class) to keep track of which class to call next. The variable .Class is a character vector of classes used to find the next method. <code>NextMethod()</code> adds an attribute “previous” to .Class giving the .Class last used for dispatch, and shifts .Class along to that used for dispatch. This means that manually changing the class of the object will have no impact on the inheritance:</p>
+<pre class="r"><code># Turn object into class A - doesn&#39;t work!
+baz.D &lt;- function(x) {
+  class(x) &lt;- &quot;A&quot;
+  NextMethod()
+}
+da &lt;- structure(1, class = c(&quot;D&quot;, &quot;A&quot;))
+db &lt;- structure(1, class = c(&quot;D&quot;, &quot;B&quot;))
+baz(da)</code></pre>
+<pre><code>## [1] &quot;A&quot;</code></pre>
+<pre class="r"><code>baz(db)</code></pre>
+<pre><code>## [1] &quot;B&quot;</code></pre>
+<p>As can bee seen, chaing the class vector of <code>da</code> and <code>db</code> from <code>c(&quot;D&quot;, &quot;A&quot;)</code> and <code>c(&quot;D&quot;, &quot;B&quot;)</code> to “A” in the <code>baz.D</code> function has not impact. <code>NextMethod()</code> still dispatched on the superclasses, using methods <code>baz.A</code> and <code>baz.B</code> and returning “A” and “B”, respectively.</p>
 <hr />
 </div>
 </div>
-<div id="object-styles" class="section level1">
-<h1>Object styles</h1>
-<p>Vector style classes have the key property that <code>length(x)</code> represents the number of observations in the vector. Some other variants do not have this property:</p>
+<div id="allowing-subclassing" class="section level2">
+<h2>Allowing subclassing</h2>
+<p>To allow subclasses, the parent constructor must have <code>...</code> and <code>class</code> arguments:</p>
+<pre class="r"><code># Modified parent constructor
+new_secret &lt;- function(x, ..., class = character()) {
+  stopifnot(is.double(x))
+
+  structure(
+    x,
+    ...,
+    class = c(class, &quot;secret&quot;)
+  )
+}</code></pre>
+<p>The <code>...</code> allows for additional “name = value” attribute pairs and the <code>class</code> argument allows for adding additional subclasses to the class vector.</p>
+<div id="supersecret-class" class="section level3">
+<h3>Supersecret class</h3>
+<p>We can create a subclass of the <code>secret</code> class as follows:</p>
+<pre class="r"><code># Constructor for the subclass
+new_supersecret &lt;- function(x) {
+  new_secret(x, class = &quot;supersecret&quot;)
+}
+# Define print method
+print.supersecret &lt;- function(x, ...) {
+  print(rep(&quot;xxxxx&quot;, length(x)))
+  invisible(x)
+}</code></pre>
+<p>The new <code>supersecret</code> class hides even the number of characters in the input double vector:</p>
+<pre class="r"><code>x2 &lt;- new_supersecret(c(15, 1, 456))
+x2</code></pre>
+<pre><code>## [1] &quot;xxxxx&quot; &quot;xxxxx&quot; &quot;xxxxx&quot;</code></pre>
+<p>For subclassing, it must be the case that the methods defined for the superclass <code>secret</code> must also work with the subclass <code>supersecret</code>— this is the purpose of inheritance and code reusability. For the subsetting methods <code>[.secret</code> and <code>[[.secret</code>, they are currently returning an object of class <code>secret</code>, even when given a <code>supersecret</code> object.</p>
+<pre class="r"><code>x2[1:3]</code></pre>
+<pre><code>## [1] &quot;xx&quot;  &quot;x&quot;   &quot;xxx&quot;</code></pre>
+<pre class="r"><code>x2[[2]]</code></pre>
+<pre><code>## [1] &quot;x&quot;</code></pre>
+<p>To ensure that <code>[.secret</code> and <code>[[.secret</code> respect inheritance— it returns the same class as <code>x</code> even if it is a subclass of <code>secret</code>— we use the <code>vcrs::vec_restore()</code> generic functions. This generic takes two inputs:</p>
 <ul>
-<li>Record style objects use a list of equal-length vectors to represent individual components of the object.The best example of this is POSIXlt, which underneath the hood is a list of 11 date-time components like year, month, and day. Record style classes override length() and subsetting methods to conceal this implementation detail.</li>
+<li><p>An object which has lost subclass information.</p></li>
+<li><p>A template object to use for restoration.</p></li>
 </ul>
-<pre class="r"><code># Object
-x &lt;- as.POSIXlt(ISOdatetime(2020, 1, 1, 0, 0, 1:3))
-x</code></pre>
-<pre><code>## [1] &quot;2020-01-01 00:00:01 EST&quot; &quot;2020-01-01 00:00:02 EST&quot;
-## [3] &quot;2020-01-01 00:00:03 EST&quot;</code></pre>
-<pre class="r"><code># Length
-length(x)</code></pre>
-<pre><code>## [1] 3</code></pre>
-<pre class="r"><code># Unclass results in a list of 11 elements, each of which is a date-time component
-unclass(x)</code></pre>
-<pre><code>## $sec
-## [1] 1 2 3
-## 
-## $min
-## [1] 0 0 0
-## 
-## $hour
-## [1] 0 0 0
-## 
-## $mday
-## [1] 1 1 1
-## 
-## $mon
-## [1] 0 0 0
-## 
-## $year
-## [1] 120 120 120
-## 
-## $wday
-## [1] 3 3 3
-## 
-## $yday
-## [1] 0 0 0
-## 
-## $isdst
-## [1] 0 0 0
-## 
-## $zone
-## [1] &quot;EST&quot; &quot;EST&quot; &quot;EST&quot;
-## 
-## $gmtoff
-## [1] -18000 -18000 -18000
-## 
-## attr(,&quot;tzone&quot;)
-## [1] &quot;&quot;    &quot;EST&quot; &quot;EDT&quot;</code></pre>
-<pre class="r"><code># First date-time object
-x[[1]]</code></pre>
-<pre><code>## [1] &quot;2020-01-01 00:00:01 EST&quot;</code></pre>
-<pre class="r"><code># Class
-x[[1]] %&gt;% class()</code></pre>
-<pre><code>## [1] &quot;POSIXlt&quot; &quot;POSIXt&quot;</code></pre>
-<pre class="r"><code># This object is a list under the hood
-x[[1]] %&gt;% unclass()</code></pre>
-<pre><code>## $sec
-## [1] 1
-## 
-## $min
-## [1] 0
-## 
-## $hour
-## [1] 0
-## 
-## $mday
-## [1] 1
-## 
-## $mon
-## [1] 0
-## 
-## $year
-## [1] 120
-## 
-## $wday
-## [1] 3
-## 
-## $yday
-## [1] 0
-## 
-## $isdst
-## [1] 0
-## 
-## $zone
-## [1] &quot;EST&quot;
-## 
-## $gmtoff
-## [1] -18000
-## 
-## attr(,&quot;tzone&quot;)
-## [1] &quot;&quot;    &quot;EST&quot; &quot;EDT&quot;</code></pre>
-<hr />
+<p>The methods can be defined as follows:</p>
+<pre class="r"><code>vec_restore.secret &lt;- function(x, to, ...) new_secret(x)
+vec_restore.supersecret &lt;- function(x, to, ...) new_supersecret(x)</code></pre>
+<p>If our class has other attributes, we can pass them from to into the constructor.</p>
+<pre class="r"><code>vec_restore.supersecret &lt;- function(x, to, ...) new_supersecret(x, other_attributes)</code></pre>
+<p>Now, we can use <code>vec_store()</code> in <code>[.secret</code> and <code>[[.secret</code> as follows to ensure that they return the same class as <code>x</code> even when it is a subclass of <code>secret</code>:</p>
+<pre class="r"><code># Subsetting methods
+`[.secret` &lt;- function(x, ...) {
+  vec_restore(x = NextMethod(), to = x)
+}
+`[[.secret` &lt;- function(x, ..) {
+  vec_restore(x = NextMethod(), to = x)
+}</code></pre>
+<p>The steps restoration are as follows:</p>
 <ul>
-<li>Data frames are similar to record style objects in that both use lists of equal length vectors.</li>
+<li><p>The first argument of <code>vec_restore</code> will call <code>NexMethod()</code>.</p></li>
+<li><p>The <code>NexMethod()</code> call will delegate the implementation to the internal <code>[</code> function, which will return an object whose subclass information is lost.</p></li>
+<li><p>The <code>vec_restore.supersecret()</code> function will then restore the attributes using the template <code>to</code>. Now the subclass should inherit the methods of the superclass:</p></li>
 </ul>
-<pre class="r"><code># Object
-x &lt;- data.frame(x = 1:100, y = 1:100)
-# Length
-length(x)</code></pre>
-<pre><code>## [1] 2</code></pre>
-<pre class="r"><code># Unclass
-x %&gt;% unclass()</code></pre>
-<pre><code>## $x
-##   [1]   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15  16  17  18
-##  [19]  19  20  21  22  23  24  25  26  27  28  29  30  31  32  33  34  35  36
-##  [37]  37  38  39  40  41  42  43  44  45  46  47  48  49  50  51  52  53  54
-##  [55]  55  56  57  58  59  60  61  62  63  64  65  66  67  68  69  70  71  72
-##  [73]  73  74  75  76  77  78  79  80  81  82  83  84  85  86  87  88  89  90
-##  [91]  91  92  93  94  95  96  97  98  99 100
-## 
-## $y
-##   [1]   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15  16  17  18
-##  [19]  19  20  21  22  23  24  25  26  27  28  29  30  31  32  33  34  35  36
-##  [37]  37  38  39  40  41  42  43  44  45  46  47  48  49  50  51  52  53  54
-##  [55]  55  56  57  58  59  60  61  62  63  64  65  66  67  68  69  70  71  72
-##  [73]  73  74  75  76  77  78  79  80  81  82  83  84  85  86  87  88  89  90
-##  [91]  91  92  93  94  95  96  97  98  99 100
-## 
-## attr(,&quot;row.names&quot;)
-##   [1]   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15  16  17  18
-##  [19]  19  20  21  22  23  24  25  26  27  28  29  30  31  32  33  34  35  36
-##  [37]  37  38  39  40  41  42  43  44  45  46  47  48  49  50  51  52  53  54
-##  [55]  55  56  57  58  59  60  61  62  63  64  65  66  67  68  69  70  71  72
-##  [73]  73  74  75  76  77  78  79  80  81  82  83  84  85  86  87  88  89  90
-##  [91]  91  92  93  94  95  96  97  98  99 100</code></pre>
-<pre class="r"><code># length
-length(x %&gt;% unclass() %&gt;% `[[`(1))</code></pre>
-<pre><code>## [1] 100</code></pre>
-<hr />
-<ul>
-<li>Scalar objects typically use a list to represent a single thing. For example, an lm object is a list of length 12 but it represents one model.</li>
-</ul>
-<pre class="r"><code># Object
-mod &lt;- lm(mpg ~ wt, data = mtcars)
-# Length
-length(mod)</code></pre>
-<pre><code>## [1] 12</code></pre>
-<hr />
+<pre class="r"><code>class(x2)</code></pre>
+<pre><code>## [1] &quot;supersecret&quot; &quot;secret&quot;</code></pre>
+<pre class="r"><code>x2[1:3]</code></pre>
+<pre><code>## [1] &quot;xxxxx&quot; &quot;xxxxx&quot; &quot;xxxxx&quot;</code></pre>
+<pre class="r"><code>x2[[2]]</code></pre>
+<pre><code>## [1] &quot;xxxxx&quot;</code></pre>
 </div>
-<div id="exercises-1" class="section level1">
-<h1>Exercises</h1>
-<div id="exercise-1-1" class="section level2">
-<h2>Exercise 1</h2>
-<p>Categorize the objects returned by <code>lm()</code>, <code>factor()</code>, <code>table()</code>, <code>as.Date()</code>, <code>as.POSIXct()</code>,<code>ecdf()</code>, <code>ordered()</code>, <code>I()</code> into the styles described above.</p>
-<ul>
-<li>Objects of class <code>lm</code> are scalar style</li>
-</ul>
-<pre class="r"><code># Object
-mod &lt;- lm(mpg ~ wt, data = mtcars)
-# Class
-class(mod)</code></pre>
-<pre><code>## [1] &quot;lm&quot;</code></pre>
-<pre class="r"><code># Base type
-mod %&gt;% typeof()</code></pre>
-<pre><code>## [1] &quot;list&quot;</code></pre>
-<ul>
-<li>Objects of class <code>factor</code> are vector style objects</li>
-</ul>
-<pre class="r"><code># Object
-x &lt;- factor(x = letters[1:10])
-# Class
-class(x)</code></pre>
-<pre><code>## [1] &quot;factor&quot;</code></pre>
-<pre class="r"><code># Unclass
-unclass(x)</code></pre>
-<pre><code>##  [1]  1  2  3  4  5  6  7  8  9 10
-## attr(,&quot;levels&quot;)
-##  [1] &quot;a&quot; &quot;b&quot; &quot;c&quot; &quot;d&quot; &quot;e&quot; &quot;f&quot; &quot;g&quot; &quot;h&quot; &quot;i&quot; &quot;j&quot;</code></pre>
-<ul>
-<li>Objects of class <code>table</code> are vector style objects</li>
-</ul>
-<pre class="r"><code># Object
-x &lt;- table(x = sample(x = 1:20, size = 50, replace = TRUE))
-x</code></pre>
-<pre><code>## x
-##  1  2  3  5  6  7  8  9 11 12 13 14 15 16 17 18 19 20 
-##  1  3  3  2  3  4  4  2  4  5  2  1  5  2  4  1  3  1</code></pre>
-<pre class="r"><code># Class
-class(x)</code></pre>
-<pre><code>## [1] &quot;table&quot;</code></pre>
-<pre class="r"><code># Unclass
-unclass(x)</code></pre>
-<pre><code>## x
-##  1  2  3  5  6  7  8  9 11 12 13 14 15 16 17 18 19 20 
-##  1  3  3  2  3  4  4  2  4  5  2  1  5  2  4  1  3  1</code></pre>
-<ul>
-<li>Objects of class <code>Date</code> are vector style objects</li>
-</ul>
-<pre class="r"><code># Object
-x &lt;- as.Date(x = &quot;2021-10-12&quot;)
-x</code></pre>
-<pre><code>## [1] &quot;2021-10-12&quot;</code></pre>
-<pre class="r"><code># Class
-class(x)</code></pre>
-<pre><code>## [1] &quot;Date&quot;</code></pre>
-<pre class="r"><code># Unclass
-unclass(x)</code></pre>
-<pre><code>## [1] 18912</code></pre>
-<ul>
-<li>Date time objects of classes <code>POSIXlt</code> and <code>POSIXct</code> are record style objects</li>
-</ul>
-<pre class="r"><code># Object
-x &lt;- as.POSIXlt(Sys.time(), &quot;America/New_York&quot;)
-x</code></pre>
-<pre><code>## [1] &quot;2022-02-27 19:03:25 EST&quot;</code></pre>
-<pre class="r"><code># Class
-class(x)</code></pre>
-<pre><code>## [1] &quot;POSIXlt&quot; &quot;POSIXt&quot;</code></pre>
-<pre class="r"><code># Unclass
-unclass(x)</code></pre>
-<pre><code>## $sec
-## [1] 25.44492
-## 
-## $min
-## [1] 3
-## 
-## $hour
-## [1] 19
-## 
-## $mday
-## [1] 27
-## 
-## $mon
-## [1] 1
-## 
-## $year
-## [1] 122
-## 
-## $wday
-## [1] 0
-## 
-## $yday
-## [1] 57
-## 
-## $isdst
-## [1] 0
-## 
-## $zone
-## [1] &quot;EST&quot;
-## 
-## $gmtoff
-## [1] -18000
-## 
-## attr(,&quot;tzone&quot;)
-## [1] &quot;America/New_York&quot; &quot;EST&quot;              &quot;EDT&quot;</code></pre>
-<ul>
-<li>Objects of class <code>ecdf</code> are cannot be categorized by any of the three categories— scalar, record style, and vector style</li>
-</ul>
-<pre class="r"><code># Object
-x &lt;- rnorm(12) %&gt;% ecdf()
-x</code></pre>
-<pre><code>## Empirical CDF 
-## Call: ecdf(.)
-##  x[1:12] = -1.1724, -1.1108, -0.48809,  ..., 1.5698, 2.0366</code></pre>
-<pre class="r"><code># Class
-x %&gt;% attributes()</code></pre>
+</div>
+<div id="exercises" class="section level2">
+<h2>Exercises</h2>
+<div id="exercise-1" class="section level3">
+<h3>Exercise 1</h3>
+<p>How does [.Date support subclasses? How does it fail to support subclasses?</p>
+<pre class="r"><code>s3_get_method(`[.Date`)</code></pre>
+<pre><code>## function (x, ..., drop = TRUE) 
+## {
+##     .Date(NextMethod(&quot;[&quot;), oldClass(x))
+## }
+## &lt;bytecode: 0x7fab6663af80&gt;
+## &lt;environment: namespace:base&gt;</code></pre>
+<p>The subsetting implementation of class “Date” uses the <code>.Date(xx, cl = &quot;Date&quot;)</code> class generator internally.</p>
+<pre class="r"><code>s3_dispatch(as.Date(c(&quot;2021-12-27&quot;, &quot;2021-11-27&quot;))[2])</code></pre>
+<pre><code>## =&gt; [.Date
+##    [.default
+## -&gt; [ (internal)</code></pre>
+<p>This has support for subclass in that the argument <code>cl = oldClass(x)</code> is used to ensure that the .Date object generated by the generator has the same class vector as the input <code>x</code>, which may be a subclass. The function <code>oldClass()</code> is basically the same as <code>class()</code>, except that it doesn’t return implicit classes, i.e. <code>attr(x, &quot;class&quot;)</code>. This implementation however does not preserve attributes:</p>
+<pre class="r"><code>x &lt;- structure(1:4, test = &quot;test&quot;, class = c(&quot;myDate&quot;, &quot;Date&quot;))
+attributes(x[1])</code></pre>
 <pre><code>## $class
-## [1] &quot;ecdf&quot;     &quot;stepfun&quot;  &quot;function&quot;
-## 
-## $call
-## ecdf(.)</code></pre>
-<pre class="r"><code># Base type
-# First class function object
-typeof(x)</code></pre>
-<pre><code>## [1] &quot;closure&quot;</code></pre>
-<pre class="r"><code># Unclass
-unclass(x) %&gt;% attributes()</code></pre>
-<pre><code>## $call
-## ecdf(.)</code></pre>
-<ul>
-<li>Objects of classes c(<code>ordered</code>, <code>factor</code>) are vector style objects</li>
-</ul>
-<pre class="r"><code># Object
-x &lt;- ordered(letters[1:10])
-# Class
-x %&gt;% attributes()</code></pre>
-<pre><code>## $levels
-##  [1] &quot;a&quot; &quot;b&quot; &quot;c&quot; &quot;d&quot; &quot;e&quot; &quot;f&quot; &quot;g&quot; &quot;h&quot; &quot;i&quot; &quot;j&quot;
-## 
-## $class
-## [1] &quot;ordered&quot; &quot;factor&quot;</code></pre>
-<pre class="r"><code># Unclass
-unclass(x)</code></pre>
-<pre><code>##  [1]  1  2  3  4  5  6  7  8  9 10
-## attr(,&quot;levels&quot;)
-##  [1] &quot;a&quot; &quot;b&quot; &quot;c&quot; &quot;d&quot; &quot;e&quot; &quot;f&quot; &quot;g&quot; &quot;h&quot; &quot;i&quot; &quot;j&quot;</code></pre>
-<ul>
-<li>Objects of classes <code>AsIs</code> can be any style depending on the argument to <code>I(x)</code></li>
-</ul>
-<pre class="r"><code># Object
-x &lt;- I(mtcars)
-y &lt;- I(as.Date(x = &quot;2021-10-12&quot;))
-# Class
-attributes(x)</code></pre>
-<pre><code>## $names
-##  [1] &quot;mpg&quot;  &quot;cyl&quot;  &quot;disp&quot; &quot;hp&quot;   &quot;drat&quot; &quot;wt&quot;   &quot;qsec&quot; &quot;vs&quot;   &quot;am&quot;   &quot;gear&quot;
-## [11] &quot;carb&quot;
-## 
-## $row.names
-##  [1] &quot;Mazda RX4&quot;           &quot;Mazda RX4 Wag&quot;       &quot;Datsun 710&quot;         
-##  [4] &quot;Hornet 4 Drive&quot;      &quot;Hornet Sportabout&quot;   &quot;Valiant&quot;            
-##  [7] &quot;Duster 360&quot;          &quot;Merc 240D&quot;           &quot;Merc 230&quot;           
-## [10] &quot;Merc 280&quot;            &quot;Merc 280C&quot;           &quot;Merc 450SE&quot;         
-## [13] &quot;Merc 450SL&quot;          &quot;Merc 450SLC&quot;         &quot;Cadillac Fleetwood&quot; 
-## [16] &quot;Lincoln Continental&quot; &quot;Chrysler Imperial&quot;   &quot;Fiat 128&quot;           
-## [19] &quot;Honda Civic&quot;         &quot;Toyota Corolla&quot;      &quot;Toyota Corona&quot;      
-## [22] &quot;Dodge Challenger&quot;    &quot;AMC Javelin&quot;         &quot;Camaro Z28&quot;         
-## [25] &quot;Pontiac Firebird&quot;    &quot;Fiat X1-9&quot;           &quot;Porsche 914-2&quot;      
-## [28] &quot;Lotus Europa&quot;        &quot;Ford Pantera L&quot;      &quot;Ferrari Dino&quot;       
-## [31] &quot;Maserati Bora&quot;       &quot;Volvo 142E&quot;         
-## 
-## $class
-## [1] &quot;AsIs&quot;       &quot;data.frame&quot;</code></pre>
-<pre class="r"><code>attributes(y)</code></pre>
-<pre><code>## $class
-## [1] &quot;AsIs&quot; &quot;Date&quot;</code></pre>
+## [1] &quot;myDate&quot; &quot;Date&quot;</code></pre>
 <hr />
+</div>
 </div>
 <div id="exercise-2" class="section level2">
 <h2>Exercise 2</h2>
-<p>What would a constructor function for <code>lm</code> objects, <code>new_lm()</code>, look like? Use ?lm and experimentation to figure out the required fields and their types.</p>
-<pre class="r"><code># Constructor for objects of class lm
-new_lm &lt;- function(x = list(), names = list()) {
-  # Check base type and attributes
-  stopifnot(is.list(x))
-  stopifnot(is.list(names))
+<p>What do you expect this code to return? What does it actually return? Why?</p>
+<pre class="r"><code>generic2 &lt;- function(x) UseMethod(&quot;generic2&quot;)
+generic2.a1 &lt;- function(x) &quot;a1&quot;
+generic2.a2 &lt;- function(x) &quot;a2&quot;
+generic2.b &lt;- function(x) {
+  class(x) &lt;- &quot;a1&quot;
+  NextMethod()
+}
 
-  structure(
-    .Data = x,
-    class = &quot;lm&quot;,
-    names = names
-  )
-}</code></pre>
-<p>The constructor is for developers and so experienced developers would know what fields are required in the <code>names</code> list. We may create a validator to ensure that the structure of the object created by <code>new_lm()</code> is as desired:</p>
-<pre class="r"><code># Validator for objects of class lm
-validator_lm &lt;- function(x) {
+obj &lt;- structure(list(), class = c(&quot;b&quot;, &quot;a2&quot;))
 
-  # Validate each component in lm list
-  if (is.double(x$coefficient)) {
-    stop(
-      &quot;Coefficients must be of type &#39;double&#39;&quot;
-    )
-  }
-  if (is.double(x$residuals)) {
-    stop(
-      &quot;Residuals must be of type &#39;double&#39;&quot;
-    )
-  }
-  if (is.double(x$effects)) {
-    stop(
-      &quot;Effects must be of type &#39;double&#39;&quot;
-    )
-  }
-  if (is.integer(x$rank)) {
-    stop(
-      &quot;Coefficients must be of type &#39;integer&#39;&quot;
-    )
-  }
-  if (is.double(x$fitted.values)) {
-    stop(
-      &quot;Fitted.values must be of type &#39;double&#39;&quot;
-    )
-  }
-  if (is.integer(x$assign)) {
-    stop(
-      &quot;Assign must be of type &#39;integer&#39;&quot;
-    )
-  }
-  if (is.list(x$qr)) {
-    stop(
-      &quot;QR decomposition must be of type &#39;list&#39;&quot;
-    )
-  }
-  if (is.integer(x$df.residual)) {
-    stop(
-      &quot;Df.residual must be of type &#39;integer&#39;&quot;
-    )
-  }
-  if (is.list(x$xlevels)) {
-    stop(
-      &quot;Xlevels must be of type &#39;integer&#39;&quot;
-    )
-  }
-  if (is.language(x$call)) {
-    stop(
-      &quot;Call must be of type &#39;language&#39;&quot;
-    )
-  }
-  if (purrr::is_formula(x$terms)) {
-    stop(
-      &quot;Terms must be of type &#39;formula&#39;&quot;
-    )
-  }
-  if (is.list(x$model)) {
-    stop(
-      &quot;Model must be of type &#39;list&#39;&quot;
-    )
-  }
-
-  x
-}</code></pre>
-<p>We may also create a helper for the user, although the use of this is minimal, since we usually create objects of class <code>lm</code> from the actual data:</p>
-<pre class="r"><code># Helper
-lm &lt;- function(coefficients = double(),
-               residuals = double(),
-               effects = double(),
-               rank = integer(),
-               fitted.values = double(),
-               assign = integer(),
-               qr = list(),
-               df.residual = integer(),
-               xlevels = list(),
-               call = lm(formula = y ~ x, data = data.frame()),
-               terms = y ~ x,
-               model = list()) {
-
-  # Call constructor
-  new_lm(
-    x = list(),
-    names = list(
-      coefficients = coefficients,
-      residuals = residuals,
-      effects = effects,
-      rank = rank,
-      fitted.values = fitted.values,
-      assign = assign,
-      qr = qr,
-      df.residual = df.residual,
-      xlevels = xlevels,
-      call = call,
-      terms = terms,
-      model = model
-    )
-  ) %&gt;%
-    # Call validator
-    validator_lm(x = .)
-}</code></pre>
+generic2(obj)</code></pre>
+<pre><code>## [1] &quot;a2&quot;</code></pre>
+<pre class="r"><code>s3_dispatch(generic2(structure(list(), class = c(&quot;b&quot;, &quot;a2&quot;))))</code></pre>
+<pre><code>## =&gt; generic2.b
+## -&gt; generic2.a2
+##    generic2.default</code></pre>
+<p>The process is as follows:</p>
+<ul>
+<li><p>The call to <code>generic2()</code> calls <code>UseMethod()</code> on the class vector of <code>obj</code>, which is <code>c(&quot;b&quot;, &quot;a2&quot;)</code>.</p></li>
+<li><p>Method dispatch searches and finds implementation for <code>generic2.b</code>, which calls <code>NextMethod()</code> inside.</p></li>
+<li><p>Because <code>NextMethod()</code> uses a global variable (.Class) to keep track of which class to call next, manually changing the class using <code>class(x) &lt;- &quot;a1&quot;</code> has no impact.</p></li>
+<li><p>Therefore, <code>generic2.a2</code> is used rather than <code>generic2.a1</code>.</p></li>
+</ul>
 <hr />
-<p>Another solution:</p>
-<pre class="r"><code>new_lm &lt;- function(coefficients, residuals, effects, rank, fitted.values, assign,
-                   qr, df.residual, xlevels, call, terms, model) {
-  stopifnot(
-    is.double(coefficients), is.double(residuals),
-    is.double(effects), is.integer(rank), is.double(fitted.values),
-    is.integer(assign), is.list(qr), is.integer(df.residual),
-    is.list(xlevels), is.language(call), is.language(terms),
-    is.list(model)
-  )
-
-  structure(
-    list(
-      coefficients = coefficients,
-      residuals = residuals,
-      effects = effects,
-      rank = rank,
-      fitted.values = fitted.values,
-      assign = assign,
-      qr = qr,
-      df.residual = df.residual,
-      xlevels = xlevels,
-      call = call,
-      terms = terms,
-      model = model
-    ),
-    class = &quot;lm&quot;
-  )
-}</code></pre>
+<div id="exercise-3" class="section level3">
+<h3>Exercise 3</h3>
+<p>R has two classes for representing date time data, POSIXct and POSIXlt, which both inherit from POSIXt. Which generics have different behaviors for the two classes? Which generics share the same behavior?</p>
+<pre class="r"><code># Get generics for these three classes
+generics_t  &lt;- s3_methods_class(&quot;POSIXt&quot;)$generic
+generics_ct &lt;- s3_methods_class(&quot;POSIXct&quot;)$generic
+generics_lt &lt;- s3_methods_class(&quot;POSIXlt&quot;)$generic</code></pre>
 </div>
 </div>
 

@@ -38,6 +38,14 @@ When `print()` is called on an object, for instance `matrix(1:20, 2)`, the class
 s3_dispatch(call = print(matrix(1:20, 2)))
 ```
 
+Generic functions all have the same form: a call to `UseMethod` that specifies the generic name and the object to dispatch on.
+
+```{r}
+my_new_generic <- function(x) {
+  UseMethod("my_new_generic")
+}
+```
+
 ---
 
 # Method dispatch
@@ -66,7 +74,7 @@ s3_dispatch(call = print(x))
 * `=>` indicates the method that is called, here `print.Date()`
 * `*` indicates a method that is defined, but not called, here `print.default()`
 
-The “default” class is a special **pseudo-class**. This is not a real class, but is included to make it possible to define a standard fallback that is found whenever a class-specific method is not available.
+The “default” class is a special **pseudo-class**. This is not a real class, but is included to make it possible to define a standard fallback that is found whenever a class-specific method is not available. Once `UseMethod` has found the correct method, it is invoked in a **special way**. Rather than creating a new evaluation environment, it uses the environment of the current function call (the call to the `generic`), so any assignments or evaluations that were made before the call to `UseMethod` will be accessible to the method. The arguments that were used in the call to the generic are passed on to the method in the same order they were received.
 
 ---
 
@@ -103,6 +111,13 @@ s3_methods_generic("within")
 s3_methods_class("Date")
 s3_methods_class("roman")
 s3_methods_class("factor")
+```
+
+Alternatively, we can use `methods` from the base package to find out which classes a generic function has methods for. Note, in R, that methods are associated with **functions** (not objects), so we pass in the name of the function, rather than the class. This is an important difference between functional OOP and Encapsulated OOP.
+
+```{r}
+methods(mean)
+methods(sum)
 ```
 
 ---
