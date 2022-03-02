@@ -286,7 +286,7 @@ s3_methods_generic(x = "format") %>% psych::headTail()
 "vctrs_percent" %in% s3_methods_generic(x = "format")$class
 ```
 
-The easiest way to create this `format()` method is to rely on one of R’s low-level formatting functions like `formatC()`, which formats numbers individually and flexibly using C style format specifications. The function `vec_data()` extract the data underlying an S3 vector object, i.e. the underlying (named) atomic vector, data frame, or list. Lastly, for `signif()`, the recognized values of digits are 1...22 decimal places, and non-missing values are rounded to the nearest integer in that range for decimal places.
+The easiest way to create this `format()` method is to rely on one of R’s low-level formatting functions like `formatC()`, which formats numbers individually and flexibly using C style format specifications. The function `vec_data()` extract the data underlying an S3 vector object, i.e. the underlying (named) atomic vector, data frame, or list. **Due to the underlying memory architecture of R, this creates a full copy of the data for atomic vectors**. Lastly, for `signif()`, the recognized values of digits are 1...22 decimal places, and non-missing values are rounded to the nearest integer in that range for decimal places.
 
 ```{r}
 format.vctrs_percent <- function(x, ...) {
@@ -338,7 +338,7 @@ One of the main goals of `vctrs` is to put coercion and casting on a robust theo
 
 * `vec_ptype2(x, y)` defines possible set of coercion. It returns a prototype if x and y can be safely coerced to the same prototype; otherwise it returns an error. The set of automatic coercion is usually quite small because too many tend to make code harder to reason about and silently propagate mistakes.
 
-* `vec_cast(x, to)` defines the possible sets of casts. It returns `x` translated to have prototype `to`, or throws an error if the conversion isn’t possible. The set of possible casts is a superset of possible coercion because they’re requested explicitly.
+* `vec_cast(x, to)` defines the possible sets of casts. It returns `x` translated to have prototype `to`, or throws an error if the conversion isn’t possible. The set of possible casts is a super set of possible coercion because they’re requested explicitly.
 
 These two generics implement functional OOP and are responsible for performing method dispatch. Therefore, as we will see below, creating coercion (`vec_ptype2(x, y)`) and casting (`vec_cast(x, to)`) methods for custom classes comes down to defining functions of the following forms:
 
@@ -723,6 +723,275 @@ poly(c(1, 0, 1))
 p
 p == poly(c(1, 0, 1))
 ```
+
+# Arithmetic
+
+The `vctrs` package provides two mathematical generics:
+
+* `vec_math(.fn, .x, ...)` provides a common dispatch mechanism for all regular unary mathematical functions for a custom S3 vector class. The arguments are :
+
+  - `.fn` A mathematical function from the base package, as a string.
+
+  - `.x` A vector.
+  
+  - `...` Additional arguments passed to .fn.
+  
+* `vec_arith(op, x, y)` provides a common double dispatch mechanism for all infix operators (+, -, /, *, ^, %%, %/%, !, &, |).
+
+  - `op` An arithmetic operator as a string
+  
+  - `x`, `y` A pair of vectors. For `!`, unary + and unary -, `y` will be a sentinel object of class MISSING, as created by MISSING().
+
+The way both these generics dispatch is by way of the `new_vctr()` function. When a new S3 vector class is implemented using the `vctrs` package, it always specifies `class <- c(class, "vctrs_vctr", if (inherit_base_type) typeof(.data))`, which means that `vctrs_vctr` is always a superclass of our custom class. Therefore, when calling a math generic like `sum` or infix function like `+`, the dispatch process (which can be observed through `s3_dispatch()`) will always search for `generic.vctrs_vctr` as one of the possibilities. Both these generics leverage this inheritance hierarchy; they define the behavior for multiple functions as follows: `sum.vctrs_vctr(x)` calls `vec_math.vctrs_vctr("sum", x)`, and `x + y` calls `vec_math.x_class.y_class("+", x, y)`. They’re accompanied by `vec_math_base()` and `vec_arith_base()` which make it easy to call the underlying base R functions. **For practical purposes, this means that if we wish to implement math methods for our custom s3 class created using the `vctrs` package, we need to override the base generics by defining our own implementation via `vec_math.MYCLASS` and `vec_arith.MYCLASS`. Then function `vec_arith()` uses double dispatch and needs the following standard boilerplate:
+
+```{r}
+vec_arith.MYCLASS <- function(op, x, y, ...) {
+  UseMethod("vec_arith.MYCLASS", object = y)
+}
+vec_arith.MYCLASS.default <- function(op, x, y, ...) {
+  stop_incompatible_op(op, x, y)
+}
+```
+
+---
+
+## Cached Sum 
+
+Recall the `cached_sum` class:
+
+```{r}
+# Constructor
+new_cached_sum <- function(x = double(), sum = 0L) {
+  # Check base type
+  vec_assert(x, ptype = double())
+  # Check attribute
+  vec_assert(sum, ptype = double(), size = 1L)
+
+  new_vctr(x, sum = sum, class = "vctrs_cached_sum")
+}
+# Helper
+cached_sum <- function(x) {
+  x <- vec_cast(x, double())
+  new_cached_sum(x, sum(x))
+}
+```
+
+We used `vec_math()` to define the `sum()` and `mean()` methods for the `cached_sum` class. Most `vec_math()` functions will have a similar interface. **We use a `switch` statement to handle the methods that we care about and fall back to `vec_math_base()` for those that we don’t care about.**
+
+```{r}
+# Define method for class vctrs_cached_sum
+vec_math.vctrs_cached_sum <- function(.fn, .x, ...) {
+  # C switch statement
+  switch(.fn,
+    # If .fn is "sum", just use the attribute of the object
+    sum = attr(.x, "sum"),
+    # If .fn is "mean", divide the attribute by the length of the vector
+    mean = attr(.x, "sum") / vec_size(.x),
+    # If not the former two, then use the base function
+    vec_math_base(.fn, .x, ...)
+  )
+}
+```
+
+The `vec_math_base(.fn, .x, ...)` function is a fallback in case the first two does not match. It gets the base function `.fn` and calls it on the underlying data of the custom class with `vec_data(.x)`:
+
+```{r}
+body(vec_math_base)
+```
+
+For instance:
+
+```{r}
+# Instantiate
+x <- cached_sum(c(2, 3, 4, 5))
+# Method
+s3_dispatch(sum(x))
+s3_dispatch(mean(x))
+s3_dispatch(sqrt(x))
+s3_dispatch(cumsum(x))
+```
+
+---
+
+## Meter class
+
+To create a `meter` class:
+
+```{r}
+# Constructor
+new_meter <- function(x) {
+  stopifnot(is.double(x))
+  new_vctr(x, class = "vctrs_meter")
+}
+# Helper
+meter <- function(x) {
+  x <- vec_cast(x, double())
+  new_meter(x)
+}
+# Format method
+format.vctrs_meter <- function(x, ...) {
+  paste0(format(vec_data(x)), "m")
+}
+# Instantiate
+x <- meter(1:10)
+x
+```
+
+Because the `meter` class is built on double vectors, the unary math functions work right out of the box.
+
+```{r}
+sum(x)
+```
+
+However, if we wish to use infix functions like `+` or `-`, we need to implement our own `vec_arith.vctrs_meter` generic
+
+### Using vec_arith()
+
+Beginning with the template:
+
+```{r}
+vec_arith.vctrs_meter <- function(op, x, y, ...) {
+  UseMethod("vec_arith.vctrs_meter", y)
+}
+vec_arith.vctrs_meter.default <- function(op, x, y, ...) {
+  stop_incompatible_op(op, x, y)
+}
+```
+
+Then, we write the methods for **two meter** objects. We use a switch statement to cover the cases we care about and `stop_incompatible_op()` to throw an informative error message for everything else.
+
+```{r}
+# Implement arithmetic 
+vec_arith.vctrs_meter.vctrs_meter <- function(op, x, y, ...) {
+  switch(
+    op,
+    # Fall through the next value
+    # For + and -, simply call the base functions on the underlying double vectors
+    # Then, use the constructor to restore it to a custom class object
+    "+" = ,
+    "-" = new_meter(vec_arith_base(op, x, y)),
+    # No constructor since dividing a meter with another returns a unit-less object (double)
+    "/" = vec_arith_base(op, x, y),
+    stop_incompatible_op(op, x, y)
+  )
+}
+```
+
+Examples:
+
+```{r}
+meter(10) + meter(1)
+meter(10) - meter(1)
+meter(10) / meter(1)
+```
+
+Dispatch process:
+
+```{r}
+s3_dispatch(meter(10) + meter(1))
+s3_dispatch(meter(10) + meter(1))
+s3_dispatch(meter(10) / meter(1))
+```
+
+
+For methods that are not implemented:
+
+```{r, eval=FALSE}
+meter(10) * meter(1)
+# Error in `stop_vctrs()`:
+# ! <vctrs_meter> * <vctrs_meter> is not permitted
+```
+
+Next, we write methods for cases where **one** of the objects is a `meter` object.
+
+```{r}
+# Case where x is custom class and y is base 
+vec_arith.vctrs_meter.numeric <- function(op, x, y, ...) {
+  switch(
+    op,
+    # Dividing meters with numbers make sense
+    "/" = ,
+    "*" = new_meter(vec_arith_base(op, x, y)),
+    stop_incompatible_op(op, x, y)
+  )
+}
+# # Case where y is custom class and x is base 
+vec_arith.numeric.vctrs_meter <- function(op, x, y, ...) {
+  switch(
+    op,
+    # Dividing numbers with meters do not make sense and so we do not implement "/" here
+    "*" = new_meter(vec_arith_base(op, x, y)),
+    stop_incompatible_op(op, x, y)
+  )
+}
+```
+
+Examples:
+
+```{r}
+meter(2) * 10
+meter(2) * as.integer(10)
+10 * meter(2)
+meter(20) / 10
+```
+
+Dispatch process:
+
+```{r}
+s3_dispatch(meter(2) * 10)
+s3_dispatch(meter(2) * as.integer(10))
+s3_dispatch(10 * meter(2))
+s3_dispatch(meter(20) / 10)
+```
+
+For non-implemented:
+
+```{r, eval=FALSE}
+10 / meter(20)
+#> Error in `vec_arith()`:
+#> ! <double> / <vctrs_meter> is not permitted
+meter(20) + 10
+#> Error in `stop_vctrs()`:
+#> ! <vctrs_meter> + <double> is not permitted
+```
+
+We need to implement `vec_arith.vctrs_meter.MISSING` for the unary `+` and `-` operators, i.e., `+3` or `-3`.
+
+```{r}
+vec_arith.vctrs_meter.MISSING <- function(op, x, y, ...) {
+  switch(op,
+    # For negative and negative numbers
+    "-" = x * -1,
+    "+" = x,
+    stop_incompatible_op(op, x, y)
+  )
+}
+# Examples
+-meter(1)
++meter(1)
+s3_dispatch(-meter(1))
+s3_dispatch(+meter(1))
+```
+
+
+The `MISSING` class is implemented as follows:
+
+```{r}
+body(MISSING)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

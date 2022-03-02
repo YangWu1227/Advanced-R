@@ -1742,7 +1742,7 @@ s3_methods_generic(x = &quot;format&quot;) %&gt;% psych::headTail()</code></pre>
 <pre class="r"><code># There is currently no method for the percent class
 &quot;vctrs_percent&quot; %in% s3_methods_generic(x = &quot;format&quot;)$class</code></pre>
 <pre><code>## [1] FALSE</code></pre>
-<p>The easiest way to create this <code>format()</code> method is to rely on one of R’s low-level formatting functions like <code>formatC()</code>, which formats numbers individually and flexibly using C style format specifications. The function <code>vec_data()</code> extract the data underlying an S3 vector object, i.e. the underlying (named) atomic vector, data frame, or list. Lastly, for <code>signif()</code>, the recognized values of digits are 1…22 decimal places, and non-missing values are rounded to the nearest integer in that range for decimal places.</p>
+<p>The easiest way to create this <code>format()</code> method is to rely on one of R’s low-level formatting functions like <code>formatC()</code>, which formats numbers individually and flexibly using C style format specifications. The function <code>vec_data()</code> extract the data underlying an S3 vector object, i.e. the underlying (named) atomic vector, data frame, or list. <strong>Due to the underlying memory architecture of R, this creates a full copy of the data for atomic vectors</strong>. Lastly, for <code>signif()</code>, the recognized values of digits are 1…22 decimal places, and non-missing values are rounded to the nearest integer in that range for decimal places.</p>
 <pre class="r"><code>format.vctrs_percent &lt;- function(x, ...) {
   # The function formatC() takes the double vector x and format it to a character vector
   out &lt;- formatC(x = signif(vec_data(x) * 100, 3))
@@ -1786,7 +1786,7 @@ vec_ptype_abbr.vctrs_percent &lt;- function(x, ...) {
 <p>One of the main goals of <code>vctrs</code> is to put coercion and casting on a robust theoretical footing so it’s possible to make accurate predictions about what, e.g., <code>c(x, y)</code> should do when x and y have different prototypes. Therefore, <code>vctrs</code> achieves this goal through two <strong>generics</strong>:</p>
 <ul>
 <li><p><code>vec_ptype2(x, y)</code> defines possible set of coercion. It returns a prototype if x and y can be safely coerced to the same prototype; otherwise it returns an error. The set of automatic coercion is usually quite small because too many tend to make code harder to reason about and silently propagate mistakes.</p></li>
-<li><p><code>vec_cast(x, to)</code> defines the possible sets of casts. It returns <code>x</code> translated to have prototype <code>to</code>, or throws an error if the conversion isn’t possible. The set of possible casts is a superset of possible coercion because they’re requested explicitly.</p></li>
+<li><p><code>vec_cast(x, to)</code> defines the possible sets of casts. It returns <code>x</code> translated to have prototype <code>to</code>, or throws an error if the conversion isn’t possible. The set of possible casts is a super set of possible coercion because they’re requested explicitly.</p></li>
 </ul>
 <p>These two generics implement functional OOP and are responsible for performing method dispatch. Therefore, as we will see below, creating coercion (<code>vec_ptype2(x, y)</code>) and casting (<code>vec_cast(x, to)</code>) methods for custom classes comes down to defining functions of the following forms:</p>
 <ul>
@@ -2004,9 +2004,9 @@ s3_dispatch(obj_print_footer(x))</code></pre>
 <pre class="r"><code># Print
 obj_print(x)</code></pre>
 <pre><code>## &lt;vctrs_cached_sum[10]&gt;
-##  [1] 0.58675284 0.89790562 0.35309322 0.05589626 0.44429260 0.65036393
-##  [7] 0.05990844 0.35976622 0.97249859 0.65593759
-## # Sum: 5.04</code></pre>
+##  [1] 0.7939943 0.2660120 0.3038517 0.5187691 0.5923521 0.5207472 0.3241941
+##  [8] 0.9099500 0.6010469 0.2256717
+## # Sum: 5.06</code></pre>
 <p>We’ll also override <code>sum()</code> and <code>mean()</code> to use this attribute. This is easiest to do with <code>vec_math()</code>. The function <code>vec_math_base()</code> is provided as a convenience for writing methods. It calls the base <code>.fn</code> on the underlying <code>vec_data()</code>.</p>
 <pre class="r"><code># Define method
 vec_math.vctrs_cached_sum &lt;- function(.fn, .x, ...) {
@@ -2025,12 +2025,12 @@ vec_math.vctrs_cached_sum &lt;- function(.fn, .x, ...) {
 # Test
 sum(x)</code></pre>
 <pre><code>## Using cache</code></pre>
-<pre><code>## [1] 5.036415</code></pre>
+<pre><code>## [1] 5.056589</code></pre>
 <p>One problem we have is that <code>vctrs</code> assumes that attributes are independent of the data. In the case of class <code>cached_sum</code>, the sum attribute depends on the vector. This means that when we take advantage of the default subsetting methods, they would return the incorrect result— prints the sum for the entire vector and not the sum of the subsetted vector:</p>
 <pre class="r"><code>x[1:2]</code></pre>
 <pre><code>## &lt;vctrs_cached_sum[2]&gt;
-## [1] 0.5867528 0.8979056
-## # Sum: 5.04</code></pre>
+## [1] 0.7939943 0.2660120
+## # Sum: 5.06</code></pre>
 <p>To fix this, we need to define a <code>vec_restore.vctrs_cached_sum()</code> method for our <code>vctrs_cached_sum</code> class that the <code>vec_restore()</code> generic function can find:</p>
 <pre class="r"><code>vec_restore.vctrs_cached_sum &lt;- function(x, to, ..., i = NULL) {
   new_cached_sum(x, sum = sum(x))
@@ -2044,8 +2044,8 @@ s3_methods_generic(x = &quot;vec_restore&quot;) %&gt;% filter(class == &quot;vct
 <pre class="r"><code># Now the default subsetting method will use `vec_restore`, with our custom method defined, under the hood
 x[1]</code></pre>
 <pre><code>## &lt;vctrs_cached_sum[1]&gt;
-## [1] 0.5867528
-## # Sum: 0.587</code></pre>
+## [1] 0.7939943
+## # Sum: 0.794</code></pre>
 <p>This works since most of the <code>vctrs</code> methods dispatch to the underlying base function by first stripping off extra attributes with <code>vec_data()</code> and then reapplying them again with <code>vec_restore()</code>. The default <code>vec_restore()</code> method copies over all attributes, which is not appropriate when the attributes depend on the data.</p>
 </div>
 <div id="polynomial-class" class="section level1">
@@ -2134,6 +2134,302 @@ poly(c(1, 0, 1))</code></pre>
 ## [1] 1         1⋅x^2 + 1 1⋅x^4 + 2</code></pre>
 <pre class="r"><code>p == poly(c(1, 0, 1))</code></pre>
 <pre><code>## [1] FALSE  TRUE FALSE</code></pre>
+</div>
+<div id="arithmetic" class="section level1">
+<h1>Arithmetic</h1>
+<p>The <code>vctrs</code> package provides two mathematical generics:</p>
+<ul>
+<li><p><code>vec_math(.fn, .x, ...)</code> provides a common dispatch mechanism for all regular unary mathematical functions for a custom S3 vector class. The arguments are :</p>
+<ul>
+<li><p><code>.fn</code> A mathematical function from the base package, as a string.</p></li>
+<li><p><code>.x</code> A vector.</p></li>
+<li><p><code>...</code> Additional arguments passed to .fn.</p></li>
+</ul></li>
+<li><p><code>vec_arith(op, x, y)</code> provides a common double dispatch mechanism for all infix operators (+, -, /, *, ^, %%, %/%, !, &amp;, |).</p>
+<ul>
+<li><p><code>op</code> An arithmetic operator as a string</p></li>
+<li><p><code>x</code>, <code>y</code> A pair of vectors. For <code>!</code>, unary + and unary -, <code>y</code> will be a sentinel object of class MISSING, as created by MISSING().</p></li>
+</ul></li>
+</ul>
+<p>The way both these generics dispatch is by way of the <code>new_vctr()</code> function. When a new S3 vector class is implemented using the <code>vctrs</code> package, it always specifies <code>class &lt;- c(class, &quot;vctrs_vctr&quot;, if (inherit_base_type) typeof(.data))</code>, which means that <code>vctrs_vctr</code> is always a superclass of our custom class. Therefore, when calling a math generic like <code>sum</code> or infix function like <code>+</code>, the dispatch process (which can be observed through <code>s3_dispatch()</code>) will always search for <code>generic.vctrs_vctr</code> as one of the possibilities. Both these generics leverage this inheritance hierarchy; they define the behavior for multiple functions as follows: <code>sum.vctrs_vctr(x)</code> calls <code>vec_math.vctrs_vctr(&quot;sum&quot;, x)</code>, and <code>x + y</code> calls <code>vec_math.x_class.y_class(&quot;+&quot;, x, y)</code>. They’re accompanied by <code>vec_math_base()</code> and <code>vec_arith_base()</code> which make it easy to call the underlying base R functions. **For practical purposes, this means that if we wish to implement math methods for our custom s3 class created using the <code>vctrs</code> package, we need to override the base generics by defining our own implementation via <code>vec_math.MYCLASS</code> and <code>vec_arith.MYCLASS</code>. Then function <code>vec_arith()</code> uses double dispatch and needs the following standard boilerplate:</p>
+<pre class="r"><code>vec_arith.MYCLASS &lt;- function(op, x, y, ...) {
+  UseMethod(&quot;vec_arith.MYCLASS&quot;, object = y)
+}
+vec_arith.MYCLASS.default &lt;- function(op, x, y, ...) {
+  stop_incompatible_op(op, x, y)
+}</code></pre>
+<hr />
+<div id="cached-sum" class="section level2">
+<h2>Cached Sum</h2>
+<p>Recall the <code>cached_sum</code> class:</p>
+<pre class="r"><code># Constructor
+new_cached_sum &lt;- function(x = double(), sum = 0L) {
+  # Check base type
+  vec_assert(x, ptype = double())
+  # Check attribute
+  vec_assert(sum, ptype = double(), size = 1L)
+
+  new_vctr(x, sum = sum, class = &quot;vctrs_cached_sum&quot;)
+}
+# Helper
+cached_sum &lt;- function(x) {
+  x &lt;- vec_cast(x, double())
+  new_cached_sum(x, sum(x))
+}</code></pre>
+<p>We used <code>vec_math()</code> to define the <code>sum()</code> and <code>mean()</code> methods for the <code>cached_sum</code> class. Most <code>vec_math()</code> functions will have a similar interface. <strong>We use a <code>switch</code> statement to handle the methods that we care about and fall back to <code>vec_math_base()</code> for those that we don’t care about.</strong></p>
+<pre class="r"><code># Define method for class vctrs_cached_sum
+vec_math.vctrs_cached_sum &lt;- function(.fn, .x, ...) {
+  # C switch statement
+  switch(.fn,
+    # If .fn is &quot;sum&quot;, just use the attribute of the object
+    sum = attr(.x, &quot;sum&quot;),
+    # If .fn is &quot;mean&quot;, divide the attribute by the length of the vector
+    mean = attr(.x, &quot;sum&quot;) / vec_size(.x),
+    # If not the former two, then use the base function
+    vec_math_base(.fn, .x, ...)
+  )
+}</code></pre>
+<p>The <code>vec_math_base(.fn, .x, ...)</code> function is a fallback in case the first two does not match. It gets the base function <code>.fn</code> and calls it on the underlying data of the custom class with <code>vec_data(.x)</code>:</p>
+<pre class="r"><code>body(vec_math_base)</code></pre>
+<pre><code>## {
+##     .fn &lt;- getExportedValue(&quot;base&quot;, .fn)
+##     .fn(vec_data(.x), ...)
+## }</code></pre>
+<p>For instance:</p>
+<pre class="r"><code># Instantiate
+x &lt;- cached_sum(c(2, 3, 4, 5))
+# Method
+s3_dispatch(sum(x))</code></pre>
+<pre><code>##    sum.vctrs_cached_sum
+##    sum.vctrs_vctr
+##    sum.default
+##    Summary.vctrs_cached_sum
+## =&gt; Summary.vctrs_vctr
+##    Summary.default
+##  * sum (internal)</code></pre>
+<pre class="r"><code>s3_dispatch(mean(x))</code></pre>
+<pre><code>##    mean.vctrs_cached_sum
+## =&gt; mean.vctrs_vctr
+##  * mean.default</code></pre>
+<pre class="r"><code>s3_dispatch(sqrt(x))</code></pre>
+<pre><code>##    sqrt.vctrs_cached_sum
+##    sqrt.vctrs_vctr
+##    sqrt.default
+##    Math.vctrs_cached_sum
+## =&gt; Math.vctrs_vctr
+##    Math.default
+##  * sqrt (internal)</code></pre>
+<pre class="r"><code>s3_dispatch(cumsum(x))</code></pre>
+<pre><code>##    cumsum.vctrs_cached_sum
+##    cumsum.vctrs_vctr
+##    cumsum.default
+##    Math.vctrs_cached_sum
+## =&gt; Math.vctrs_vctr
+##    Math.default
+##  * cumsum (internal)</code></pre>
+<hr />
+</div>
+<div id="meter-class" class="section level2">
+<h2>Meter class</h2>
+<p>To create a <code>meter</code> class:</p>
+<pre class="r"><code># Constructor
+new_meter &lt;- function(x) {
+  stopifnot(is.double(x))
+  new_vctr(x, class = &quot;vctrs_meter&quot;)
+}
+# Helper
+meter &lt;- function(x) {
+  x &lt;- vec_cast(x, double())
+  new_meter(x)
+}
+# Format method
+format.vctrs_meter &lt;- function(x, ...) {
+  paste0(format(vec_data(x)), &quot;m&quot;)
+}
+# Instantiate
+x &lt;- meter(1:10)
+x</code></pre>
+<pre><code>## &lt;vctrs_meter[10]&gt;
+##  [1]  1m  2m  3m  4m  5m  6m  7m  8m  9m 10m</code></pre>
+<p>Because the <code>meter</code> class is built on double vectors, the unary math functions work right out of the box.</p>
+<pre class="r"><code>sum(x)</code></pre>
+<pre><code>## &lt;vctrs_meter[1]&gt;
+## [1] 55m</code></pre>
+<p>However, if we wish to use infix functions like <code>+</code> or <code>-</code>, we need to implement our own <code>vec_arith.vctrs_meter</code> generic</p>
+<div id="using-vec_arith" class="section level3">
+<h3>Using vec_arith()</h3>
+<p>Beginning with the template:</p>
+<pre class="r"><code>vec_arith.vctrs_meter &lt;- function(op, x, y, ...) {
+  UseMethod(&quot;vec_arith.vctrs_meter&quot;, y)
+}
+vec_arith.vctrs_meter.default &lt;- function(op, x, y, ...) {
+  stop_incompatible_op(op, x, y)
+}</code></pre>
+<p>Then, we write the methods for <strong>two meter</strong> objects. We use a switch statement to cover the cases we care about and <code>stop_incompatible_op()</code> to throw an informative error message for everything else.</p>
+<pre class="r"><code># Implement arithmetic 
+vec_arith.vctrs_meter.vctrs_meter &lt;- function(op, x, y, ...) {
+  switch(
+    op,
+    # Fall through the next value
+    # For + and -, simply call the base functions on the underlying double vectors
+    # Then, use the constructor to restore it to a custom class object
+    &quot;+&quot; = ,
+    &quot;-&quot; = new_meter(vec_arith_base(op, x, y)),
+    # No constructor since dividing a meter with another returns a unit-less object (double)
+    &quot;/&quot; = vec_arith_base(op, x, y),
+    stop_incompatible_op(op, x, y)
+  )
+}</code></pre>
+<p>Examples:</p>
+<pre class="r"><code>meter(10) + meter(1)</code></pre>
+<pre><code>## &lt;vctrs_meter[1]&gt;
+## [1] 11m</code></pre>
+<pre class="r"><code>meter(10) - meter(1)</code></pre>
+<pre><code>## &lt;vctrs_meter[1]&gt;
+## [1] 9m</code></pre>
+<pre class="r"><code>meter(10) / meter(1)</code></pre>
+<pre><code>## [1] 10</code></pre>
+<p>Dispatch process:</p>
+<pre class="r"><code>s3_dispatch(meter(10) + meter(1))</code></pre>
+<pre><code>##    +.vctrs_meter
+## =&gt; +.vctrs_vctr
+##    +.default
+##    Ops.vctrs_meter
+##    Ops.vctrs_vctr
+##    Ops.default
+##  * + (internal)</code></pre>
+<pre class="r"><code>s3_dispatch(meter(10) + meter(1))</code></pre>
+<pre><code>##    +.vctrs_meter
+## =&gt; +.vctrs_vctr
+##    +.default
+##    Ops.vctrs_meter
+##    Ops.vctrs_vctr
+##    Ops.default
+##  * + (internal)</code></pre>
+<pre class="r"><code>s3_dispatch(meter(10) / meter(1))</code></pre>
+<pre><code>##    /.vctrs_meter
+## =&gt; /.vctrs_vctr
+##    /.default
+##    Ops.vctrs_meter
+##    Ops.vctrs_vctr
+##    Ops.default
+##  * / (internal)</code></pre>
+<p>For methods that are not implemented:</p>
+<pre class="r"><code>meter(10) * meter(1)
+# Error in `stop_vctrs()`:
+# ! &lt;vctrs_meter&gt; * &lt;vctrs_meter&gt; is not permitted</code></pre>
+<p>Next, we write methods for cases where <strong>one</strong> of the objects is a <code>meter</code> object.</p>
+<pre class="r"><code># Case where x is custom class and y is base 
+vec_arith.vctrs_meter.numeric &lt;- function(op, x, y, ...) {
+  switch(
+    op,
+    # Dividing meters with numbers make sense
+    &quot;/&quot; = ,
+    &quot;*&quot; = new_meter(vec_arith_base(op, x, y)),
+    stop_incompatible_op(op, x, y)
+  )
+}
+# # Case where y is custom class and x is base 
+vec_arith.numeric.vctrs_meter &lt;- function(op, x, y, ...) {
+  switch(
+    op,
+    # Dividing numbers with meters do not make sense and so we do not implement &quot;/&quot; here
+    &quot;*&quot; = new_meter(vec_arith_base(op, x, y)),
+    stop_incompatible_op(op, x, y)
+  )
+}</code></pre>
+<p>Examples:</p>
+<pre class="r"><code>meter(2) * 10</code></pre>
+<pre><code>## &lt;vctrs_meter[1]&gt;
+## [1] 20m</code></pre>
+<pre class="r"><code>meter(2) * as.integer(10)</code></pre>
+<pre><code>## &lt;vctrs_meter[1]&gt;
+## [1] 20m</code></pre>
+<pre class="r"><code>10 * meter(2)</code></pre>
+<pre><code>## &lt;vctrs_meter[1]&gt;
+## [1] 20m</code></pre>
+<pre class="r"><code>meter(20) / 10</code></pre>
+<pre><code>## &lt;vctrs_meter[1]&gt;
+## [1] 2m</code></pre>
+<p>Dispatch process:</p>
+<pre class="r"><code>s3_dispatch(meter(2) * 10)</code></pre>
+<pre><code>##    *.vctrs_meter
+## =&gt; *.vctrs_vctr
+##    *.default
+##    Ops.vctrs_meter
+##    Ops.vctrs_vctr
+##    Ops.default
+##  * * (internal)</code></pre>
+<pre class="r"><code>s3_dispatch(meter(2) * as.integer(10))</code></pre>
+<pre><code>##    *.vctrs_meter
+## =&gt; *.vctrs_vctr
+##    *.default
+##    Ops.vctrs_meter
+##    Ops.vctrs_vctr
+##    Ops.default
+##  * * (internal)</code></pre>
+<pre class="r"><code>s3_dispatch(10 * meter(2))</code></pre>
+<pre><code>##    *.double
+##    *.numeric
+##    *.default
+##    Ops.double
+##    Ops.numeric
+##    Ops.default
+## =&gt; * (internal)</code></pre>
+<pre class="r"><code>s3_dispatch(meter(20) / 10)</code></pre>
+<pre><code>##    /.vctrs_meter
+## =&gt; /.vctrs_vctr
+##    /.default
+##    Ops.vctrs_meter
+##    Ops.vctrs_vctr
+##    Ops.default
+##  * / (internal)</code></pre>
+<p>For non-implemented:</p>
+<pre class="r"><code>10 / meter(20)
+#&gt; Error in `vec_arith()`:
+#&gt; ! &lt;double&gt; / &lt;vctrs_meter&gt; is not permitted
+meter(20) + 10
+#&gt; Error in `stop_vctrs()`:
+#&gt; ! &lt;vctrs_meter&gt; + &lt;double&gt; is not permitted</code></pre>
+<p>We need to implement <code>vec_arith.vctrs_meter.MISSING</code> for the unary <code>+</code> and <code>-</code> operators, i.e., <code>+3</code> or <code>-3</code>.</p>
+<pre class="r"><code>vec_arith.vctrs_meter.MISSING &lt;- function(op, x, y, ...) {
+  switch(op,
+    # For negative and negative numbers
+    &quot;-&quot; = x * -1,
+    &quot;+&quot; = x,
+    stop_incompatible_op(op, x, y)
+  )
+}
+# Examples
+-meter(1)</code></pre>
+<pre><code>## &lt;vctrs_meter[1]&gt;
+## [1] -1m</code></pre>
+<pre class="r"><code>+meter(1)</code></pre>
+<pre><code>## &lt;vctrs_meter[1]&gt;
+## [1] 1m</code></pre>
+<pre class="r"><code>s3_dispatch(-meter(1))</code></pre>
+<pre><code>##    -.vctrs_meter
+## =&gt; -.vctrs_vctr
+##    -.default
+##    Ops.vctrs_meter
+##    Ops.vctrs_vctr
+##    Ops.default
+##  * - (internal)</code></pre>
+<pre class="r"><code>s3_dispatch(+meter(1))</code></pre>
+<pre><code>##    +.vctrs_meter
+## =&gt; +.vctrs_vctr
+##    +.default
+##    Ops.vctrs_meter
+##    Ops.vctrs_vctr
+##    Ops.default
+##  * + (internal)</code></pre>
+<p>The <code>MISSING</code> class is implemented as follows:</p>
+<pre class="r"><code>body(MISSING)</code></pre>
+<pre><code>## {
+##     structure(list(), class = &quot;MISSING&quot;)
+## }</code></pre>
+</div>
+</div>
 </div>
 
 
